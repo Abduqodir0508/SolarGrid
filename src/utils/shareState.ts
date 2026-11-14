@@ -8,11 +8,13 @@ const LEGACY_STORAGE_KEY = 'solargrid_current_project';
 
 /**
  * Standart yangi loyiha shabloni
+ * isEmpty=true bo'lsa, tom mutlaqo bo'sh (0 ta panel bilan) toza ochiladi
  */
 export function createDefaultProject(
-  name: string = 'Quyosh Loyihasi #1',
+  name: string = 'Yangi Loyiha',
   clientName: string = 'Mijoz',
-  address: string = ''
+  address: string = '',
+  isEmpty: boolean = true
 ): ProjectData {
   const id = `proj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   return {
@@ -29,7 +31,8 @@ export function createDefaultProject(
       azimuth: 180,
       material: 'metal_sheet',
     },
-    panels: [
+    // Foydalanuvchi yangi papka / loyiha ochganda tom mutlaqo bo'sh bo'ladi!
+    panels: isEmpty ? [] : [
       {
         id: `p1-${Date.now()}`,
         specId: 'longi-himo6-550',
@@ -52,30 +55,6 @@ export function createDefaultProject(
         height: 227.8,
         power: 550,
         label: 'LONGi #2',
-        isValid: true,
-      },
-      {
-        id: `p3-${Date.now()}`,
-        specId: 'longi-himo6-550',
-        x: 600.8,
-        y: 280,
-        rotation: 0,
-        width: 113.4,
-        height: 227.8,
-        power: 550,
-        label: 'LONGi #3',
-        isValid: true,
-      },
-      {
-        id: `p4-${Date.now()}`,
-        specId: 'longi-himo6-550',
-        x: 716.2,
-        y: 280,
-        rotation: 0,
-        width: 113.4,
-        height: 227.8,
-        power: 550,
-        label: 'LONGi #4',
         isValid: true,
       },
     ],

@@ -12,7 +12,9 @@ import {
   Check,
   RotateCcw,
   FolderOpen,
-  Save,
+  Crown,
+  User,
+  Sparkles,
 } from 'lucide-react';
 import { sanitizeText } from '@/utils/sanitize';
 
@@ -22,6 +24,8 @@ interface HeaderProps {
   projectName: string;
   onProjectNameChange: (name: string) => void;
   onOpenProjects: () => void;
+  onOpenPricing: () => void;
+  onOpenAuth: () => void;
   onOpenSmartLayout: () => void;
   onOpenRoofConfig: () => void;
   onOpenEstimate: () => void;
@@ -31,6 +35,8 @@ interface HeaderProps {
   totalCapacityKw: number;
   isCopied: boolean;
   isSaved?: boolean;
+  isPro?: boolean;
+  currentUser?: any;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   projectName,
   onProjectNameChange,
   onOpenProjects,
+  onOpenPricing,
+  onOpenAuth,
   onOpenSmartLayout,
   onOpenRoofConfig,
   onOpenEstimate,
@@ -48,6 +56,8 @@ export const Header: React.FC<HeaderProps> = ({
   totalCapacityKw,
   isCopied,
   isSaved = true,
+  isPro = false,
+  currentUser = null,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(projectName);
@@ -61,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="bg-white/95 backdrop-blur-md border-b border-cream-200 sticky top-0 z-40 px-3 sm:px-6 py-2.5 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-4">
         
-        {/* Chap tomon: Logo va Loyiha nomi */}
+        {/* Chap tomon: Logo, PRO nishoni va Loyiha nomi */}
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 text-white shadow-md shadow-amber-500/20">
             <Sun className="w-6 h-6 animate-spin-slow" />
@@ -70,10 +80,22 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2">
               <h1 className="font-extrabold text-base sm:text-lg text-navy-900 tracking-tight flex items-center gap-1.5">
                 SolarGrid
-                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                  PRO
-                </span>
               </h1>
+
+              {/* PRO TUGMASI (Tariflar oynasini ochadi) */}
+              <button
+                type="button"
+                onClick={onOpenPricing}
+                className={`flex items-center gap-1 text-[10px] uppercase font-black px-2 py-0.5 rounded-full border shadow-xs transition-all active:scale-95 ${
+                  isPro
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-navy-950 border-amber-500 shadow-amber-500/20'
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                }`}
+                title="Tariflar va PRO imkoniyatlarni ko'rish"
+              >
+                <Crown className={`w-3 h-3 ${isPro ? 'fill-navy-950 text-navy-950' : 'text-amber-700'}`} />
+                <span>{isPro ? 'PRO AKTIV' : 'PRO'}</span>
+              </button>
 
               {/* Papkalar / Loyihalarim tugmasi */}
               <button
@@ -114,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
                     setTempName(projectName);
                     setIsEditingName(true);
                   }}
-                  className="hover:underline flex items-center gap-1 font-bold text-navy-900 truncate max-w-[180px] sm:max-w-[260px]"
+                  className="hover:underline flex items-center gap-1 font-bold text-navy-900 truncate max-w-[160px] sm:max-w-[240px]"
                   title="Nomini o'zgartirish uchun bosing"
                 >
                   <span className="truncate">{projectName}</span>
@@ -163,7 +185,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
 
-        {/* O'ng tomon: Harakat tugmalari */}
+        {/* O'ng tomon: Harakat tugmalari va Auth */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Tom sozlamalari */}
           <button
@@ -209,7 +231,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onReset}
               className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Panellarni tozalash"
+              title="Tomdagi panellarni tozalash"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -221,7 +243,21 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold text-navy-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 shadow-md shadow-amber-500/20 active:scale-95 transition-all"
           >
             <FileText className="w-4 h-4" />
-            <span>Smeta va Chizma</span>
+            <span>Smeta</span>
+          </button>
+
+          {/* Foydalanuvchi / Kirish tugmasi */}
+          <button
+            type="button"
+            onClick={onOpenAuth}
+            className={`p-1.5 rounded-xl border transition-all flex items-center justify-center ${
+              currentUser
+                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                : 'bg-cream-100 hover:bg-cream-200 text-navy-800 border-cream-300'
+            }`}
+            title={currentUser ? `${currentUser.email} (Profil)` : 'Kirish yoki Ro\'yxatdan o\'tish'}
+          >
+            <User className="w-4 h-4" />
           </button>
         </div>
 

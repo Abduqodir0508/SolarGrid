@@ -21,6 +21,12 @@ import {
   encodeProjectToUrl,
   decodeProjectFromUrl,
 } from '@/utils/shareState';
+import {
+  supabase,
+  getUserProStatus,
+  syncProjectsToCloud,
+  fetchProjectsFromCloud,
+} from '@/lib/supabase';
 import { calculateProjectMetrics } from '@/utils/solarCalc';
 import { sanitizeText } from '@/utils/sanitize';
 
@@ -32,22 +38,30 @@ import { PanelCatalogSheet } from '@/components/PanelCatalogSheet';
 import { SmartLayoutModal } from '@/components/SmartLayoutModal';
 import { EstimateModal } from '@/components/EstimateModal';
 import { ProjectsManagerModal } from '@/components/ProjectsManagerModal';
+import { PricingModal } from '@/components/PricingModal';
+import { AuthModal } from '@/components/AuthModal';
 
 export default function SolarGridApp() {
-  // 1. Ko'p loyihali tizim holatlari
+  // 1. Supabase Auth va PRO holatlari
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isPro, setIsPro] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
+
+  // 2. Ko'p loyihali tizim holatlari
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [activeProjectIdState, setActiveProjectIdState] = useState<string>('');
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState<boolean>(false);
   const [isSaved, setIsSaved] = useState<boolean>(true);
 
-  // Joriy faol loyiha parametrlari
+  // Joriy faol loyiha
   const [currentProject, setCurrentProject] = useState<ProjectData>(() =>
-    createDefaultProject('Qo\'yliq 6-massiv, 5-dom', 'Alisher aka', 'Qo\'yliq 6-massiv, 5-dom')
+    createDefaultProject('Qo\'yliq 6-massiv, 5-dom', 'Alisher aka', 'Qo\'yliq 6-massiv, 5-dom', false)
   );
 
   const [customPanels, setCustomPanels] = useState<SolarPanelSpec[]>([]);
 
-  // 2. Ko'rinish va Simulyatsiya
+  // 3. Ko'rinish va Simulyatsiya
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const [simulation, setSimulation] = useState<SimulationState>({
     time: 13.0,
@@ -62,9 +76,38 @@ export default function SolarGridApp() {
   const [isEstimateOpen, setIsEstimateOpen] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
-  // 3. Dastlabki yuklanish (URL Hash yoki LocalStorage Workspace)
+  // 4. Supabase seansini yuklash va kuzatish
   useEffect(() => {
-    // 1-navbatda URL link tekshiriladi
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const user = session?.user || null;
+      setCurrentUser(user);
+      getUserProStatus(user?.id).then(setIsPro);
+
+      if (user) {
+        // Bulutdan loyihalarni sinxronlash
+        fetchProjectsFromCloud(user.id).then((cloudProjects) => {
+          if (cloudProjects && cloudProjects.length > 0) {
+            setProjects(cloudProjects);
+            setCurrentProject(cloudProjects[0]);
+            setActiveProjectIdState(cloudProjects[0].id);
+          }
+        });
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user || null;
+      setCurrentUser(user);
+      getUserProStatus(user?.id).then(setIsPro);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 5. Dastlabki yuklanish (URL Hash yoki LocalStorage)
+  useEffect(() => {
     const sharedProject = decodeProjectFromUrl();
     if (sharedProject && sharedProject.roof && sharedProject.panels) {
       const fullProject: ProjectData = {
@@ -88,7 +131,6 @@ export default function SolarGridApp() {
       return;
     }
 
-    // 2-navbatda LocalStorage Workspace yuklanadi
     const all = getAllProjects();
     setProjects(all);
 
@@ -98,7 +140,7 @@ export default function SolarGridApp() {
     if (!initialProject && all.length > 0) {
       initialProject = all[0];
     } else if (!initialProject) {
-      initialProject = createDefaultProject();
+      initialProject = createDefaultProject('Yangi Obyekt', 'Mijoz', '', true);
       saveSingleProject(initialProject);
     }
 
@@ -106,7 +148,7 @@ export default function SolarGridApp() {
     setActiveProjectIdState(initialProject.id);
   }, []);
 
-  // 4. Loyiha o'zgarganda avtomatik saqlash (Auto-save)
+  // 6. Loyiha o'zgarganda avtomatik saqlash (Auto-save)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const updateCurrentProject = useCallback(
@@ -115,21 +157,25 @@ export default function SolarGridApp() {
         const next = updater(prev);
         setIsSaved(false);
 
-        // Debounced saqlash
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(() => {
           saveSingleProject(next);
-          setProjects(getAllProjects());
+          const all = getAllProjects();
+          setProjects(all);
           setIsSaved(true);
+
+          // Agar foydalanuvchi tizimga kirgan bo'lsa, bulutga ham saqlash
+          if (currentUser?.id) {
+            syncProjectsToCloud(currentUser.id, all);
+          }
         }, 300);
 
         return next;
       });
     },
-    []
+    [currentUser?.id]
   );
 
-  // Brauzer yopilishida yoki yangilanishida ma'lumotlarni saqlash
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (currentProject) {
@@ -140,10 +186,8 @@ export default function SolarGridApp() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [currentProject]);
 
-  // 5. Loyihalar papkasi bilan ishlash
-  // A) Boshqa loyihani ochish
+  // 7. Loyihalar papkasi bilan ishlash
   const handleSelectProject = (id: string) => {
-    // Avval hozirgisini saqlaymiz
     saveSingleProject(currentProject);
 
     const all = getAllProjects();
@@ -157,11 +201,12 @@ export default function SolarGridApp() {
     }
   };
 
-  // B) Yangi loyiha yaratish
+  // YANGI PAPKA / LOYIHA OCHGANDA: TOM MUTLAQO BO'SH (0 TA PANEL) BO'LADI!
   const handleCreateProject = (name: string, clientName: string, address: string) => {
     saveSingleProject(currentProject);
 
-    const newProj = createDefaultProject(name, clientName, address);
+    // isEmpty = true beriladi -> panels: [] bo'm-bo'sh toza ochiladi!
+    const newProj = createDefaultProject(name, clientName, address, true);
     saveSingleProject(newProj);
 
     const updatedList = getAllProjects();
@@ -171,9 +216,12 @@ export default function SolarGridApp() {
     setActiveProjectId(newProj.id);
     setSelectedPanelId(null);
     setIsSaved(true);
+
+    if (currentUser?.id) {
+      syncProjectsToCloud(currentUser.id, updatedList);
+    }
   };
 
-  // C) Loyihani o'chirish
   const handleDeleteProject = (id: string) => {
     const { remaining, nextActive } = deleteProjectById(id);
     setProjects(remaining);
@@ -183,20 +231,27 @@ export default function SolarGridApp() {
       setActiveProjectIdState(nextActive.id);
       setSelectedPanelId(null);
     }
-  };
 
-  // D) Loyihani nusxalash (Duplicate)
-  const handleDuplicateProject = (id: string) => {
-    const clone = duplicateProjectById(id);
-    if (clone) {
-      setProjects(getAllProjects());
-      setCurrentProject(clone);
-      setActiveProjectIdState(clone.id);
-      setSelectedPanelId(null);
+    if (currentUser?.id) {
+      syncProjectsToCloud(currentUser.id, remaining);
     }
   };
 
-  // 6. Loyiha nomini o'zgartirish
+  const handleDuplicateProject = (id: string) => {
+    const clone = duplicateProjectById(id);
+    if (clone) {
+      const list = getAllProjects();
+      setProjects(list);
+      setCurrentProject(clone);
+      setActiveProjectIdState(clone.id);
+      setSelectedPanelId(null);
+
+      if (currentUser?.id) {
+        syncProjectsToCloud(currentUser.id, list);
+      }
+    }
+  };
+
   const handleProjectNameChange = (name: string) => {
     updateCurrentProject((prev) => ({
       ...prev,
@@ -204,7 +259,6 @@ export default function SolarGridApp() {
     }));
   };
 
-  // 7. Tom o'lchamlarini yangilash
   const handleRoofChange = (newRoof: Roof) => {
     updateCurrentProject((prev) => ({
       ...prev,
@@ -212,7 +266,6 @@ export default function SolarGridApp() {
     }));
   };
 
-  // 8. Panellarni yangilash
   const handlePanelsChange = (newPanels: PlacedPanel[]) => {
     updateCurrentProject((prev) => ({
       ...prev,
@@ -220,7 +273,6 @@ export default function SolarGridApp() {
     }));
   };
 
-  // 9. Katalogdan panel qo'shish
   const handleAddPanel = (spec: SolarPanelSpec) => {
     const newW = spec.width;
     const newH = spec.height;
@@ -259,12 +311,10 @@ export default function SolarGridApp() {
     setSelectedPanelId(newPanel.id);
   };
 
-  // 10. Maxsus panel turini qo'shish
   const handleAddCustomSpec = (spec: SolarPanelSpec) => {
     setCustomPanels((prev) => [...prev, spec]);
   };
 
-  // 11. Barcha panellarni tozalash (tasdiqlash bilan)
   const handleClearPanels = () => {
     if (currentProject.panels.length === 0) return;
     if (window.confirm('Ushbu loyihadagi barcha panellarni olib tashlashni xohlaysizmi?')) {
@@ -276,7 +326,6 @@ export default function SolarGridApp() {
     }
   };
 
-  // 12. AI Avto-joylashtirish
   const handleApplySmartLayout = (newPanels: PlacedPanel[]) => {
     updateCurrentProject((prev) => ({
       ...prev,
@@ -285,7 +334,6 @@ export default function SolarGridApp() {
     setSelectedPanelId(null);
   };
 
-  // 13. Mijoz ma'lumotlarini yangilash
   const handleUpdateClientInfo = (name: string, phone: string) => {
     updateCurrentProject((prev) => ({
       ...prev,
@@ -294,7 +342,6 @@ export default function SolarGridApp() {
     }));
   };
 
-  // 14. Ulashish
   const handleShare = () => {
     saveSingleProject(currentProject);
     const shareUrl = encodeProjectToUrl(currentProject);
@@ -322,6 +369,8 @@ export default function SolarGridApp() {
         projectName={currentProject.projectName}
         onProjectNameChange={handleProjectNameChange}
         onOpenProjects={() => setIsProjectsModalOpen(true)}
+        onOpenPricing={() => setIsPricingModalOpen(true)}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenSmartLayout={() => setIsSmartLayoutOpen(true)}
         onOpenRoofConfig={() => setIsRoofConfigOpen(true)}
         onOpenEstimate={() => setIsEstimateOpen(true)}
@@ -331,6 +380,8 @@ export default function SolarGridApp() {
         totalCapacityKw={metrics.totalCapacityKw}
         isCopied={isCopied}
         isSaved={isSaved}
+        isPro={isPro}
+        currentUser={currentUser}
       />
 
       {/* 2. Asosiy Chizma / Simulyatsiya Maydoni */}
@@ -364,7 +415,7 @@ export default function SolarGridApp() {
         onAddCustomSpec={handleAddCustomSpec}
       />
 
-      {/* 4. Loyihalar Papkasi Modali (Excel/Word papkalar tizimi) */}
+      {/* 4. Loyihalar Papkasi Modali */}
       <ProjectsManagerModal
         isOpen={isProjectsModalOpen}
         onClose={() => setIsProjectsModalOpen(false)}
@@ -376,7 +427,29 @@ export default function SolarGridApp() {
         onDuplicateProject={handleDuplicateProject}
       />
 
-      {/* 5. Tom Sozlamalari Modali */}
+      {/* 5. Tariflar va PRO Sotib olish Modali */}
+      <PricingModal
+        isOpen={isPricingModalOpen}
+        onClose={() => setIsPricingModalOpen(false)}
+        isPro={isPro}
+        onProActivated={() => setIsPro(true)}
+        userId={currentUser?.id}
+      />
+
+      {/* 6. Registratsiya va Login Modali (Supabase Auth) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+          if (user) getUserProStatus(user.id).then(setIsPro);
+        }}
+        onOpenPricing={() => setIsPricingModalOpen(true)}
+        isPro={isPro}
+      />
+
+      {/* 7. Tom Sozlamalari Modali */}
       <RoofConfigDrawer
         isOpen={isRoofConfigOpen}
         onClose={() => setIsRoofConfigOpen(false)}
@@ -384,7 +457,7 @@ export default function SolarGridApp() {
         onRoofChange={handleRoofChange}
       />
 
-      {/* 6. AI Optimal Joylashtirish Modali */}
+      {/* 8. AI Optimal Joylashtirish Modali */}
       <SmartLayoutModal
         isOpen={isSmartLayoutOpen}
         onClose={() => setIsSmartLayoutOpen(false)}
@@ -393,7 +466,7 @@ export default function SolarGridApp() {
         onApplyLayout={handleApplySmartLayout}
       />
 
-      {/* 7. Tayyor Smeta va Usta Montaj Chizmasi (Print / PDF) */}
+      {/* 9. Tayyor Smeta va Usta Montaj Chizmasi (Print / PDF) */}
       <EstimateModal
         isOpen={isEstimateOpen}
         onClose={() => setIsEstimateOpen(false)}
