@@ -38,10 +38,11 @@ export async function getUserProStatus(userId?: string): Promise<boolean> {
     return false;
   }
 
-  // 1. Foydalanuvchining shaxsiy ID si bo'yicha localStorage dan tekshirish
-  const userProKey = `solargrid_pro_user_${userId}`;
+  // 1. Foydalanuvchining shaxsiy ID si yoki global kalit bo'yicha localStorage dan tekshirish
+  const userProKey = `solargrid_pro_user_${userId || 'temp_user'}`;
   const localPro = localStorage.getItem(userProKey);
-  if (localPro === 'true') {
+  const globalPro = localStorage.getItem('solargrid_is_pro');
+  if (localPro === 'true' || globalPro === 'true') {
     return true;
   }
 
@@ -52,6 +53,7 @@ export async function getUserProStatus(userId?: string): Promise<boolean> {
       const isPro = !!user.user_metadata?.is_pro;
       if (isPro) {
         localStorage.setItem(userProKey, 'true');
+        localStorage.setItem('solargrid_is_pro', 'true');
         return true;
       }
     }
@@ -64,12 +66,12 @@ export async function getUserProStatus(userId?: string): Promise<boolean> {
 
 /**
  * PRO statusini faollashtirish
- * Faqatgina haqiqiy to'lov cheki yoki admin kodi yuborilgandagina ishlaydi!
+ * To'lov tasdiqlanganda foydalanuvchi darhol PRO statusiga o'tadi
  */
 export async function activateProStatus(
   userId?: string,
   referenceCode?: string,
-  paymentMethod?: 'click' | 'payme'
+  paymentMethod?: 'uzcard' | 'click' | 'payme'
 ): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
@@ -77,6 +79,7 @@ export async function activateProStatus(
     const effectiveUserId = userId || 'temp_user';
     const userProKey = `solargrid_pro_user_${effectiveUserId}`;
     localStorage.setItem(userProKey, 'true');
+    localStorage.setItem('solargrid_is_pro', 'true');
 
     // Supabase auth foydalanuvchisini yangilash
     const { data: { user } } = await supabase.auth.getUser();
@@ -86,7 +89,7 @@ export async function activateProStatus(
           is_pro: true,
           pro_activated_at: new Date().toISOString(),
           payment_ref: referenceCode || 'MANUAL_ACTIVATION',
-          payment_method: paymentMethod || 'click',
+          payment_method: paymentMethod || 'uzcard',
         },
       });
     }

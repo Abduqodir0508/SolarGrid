@@ -15,6 +15,7 @@ import {
   MapPin,
   ExternalLink,
   Layers,
+  Crown,
 } from 'lucide-react';
 import { sanitizeText } from '@/utils/sanitize';
 
@@ -27,6 +28,8 @@ interface ProjectsManagerModalProps {
   onCreateProject: (name: string, clientName: string, address: string) => void;
   onDeleteProject: (id: string) => void;
   onDuplicateProject: (id: string) => void;
+  isPro?: boolean;
+  onOpenPricing?: () => void;
 }
 
 export const ProjectsManagerModal: React.FC<ProjectsManagerModalProps> = ({
@@ -38,6 +41,8 @@ export const ProjectsManagerModal: React.FC<ProjectsManagerModalProps> = ({
   onCreateProject,
   onDeleteProject,
   onDuplicateProject,
+  isPro = false,
+  onOpenPricing,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -122,14 +127,53 @@ export const ProjectsManagerModal: React.FC<ProjectsManagerModalProps> = ({
             />
           </div>
 
-          <button
-            onClick={() => setIsCreatingNew(!isCreatingNew)}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4 text-amber-400" />
-            <span>Yangi Obyekt / Loyiha</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {isPro ? (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold">
+                <Crown className="w-3 h-3 text-amber-600 fill-amber-500" />
+                Cheksiz Loyihalar (PRO)
+              </span>
+            ) : (
+              <span className="hidden sm:inline-block text-[11px] font-semibold text-gray-500 bg-cream-100 px-2.5 py-1 rounded-full border border-cream-200">
+                {projects.length}/3 loyiha (Bepul)
+              </span>
+            )}
+
+            <button
+              onClick={() => {
+                if (!isPro && projects.length >= 3) {
+                  onClose();
+                  onOpenPricing?.();
+                } else {
+                  setIsCreatingNew(!isCreatingNew);
+                }
+              }}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>Yangi Obyekt / Loyiha</span>
+            </button>
+          </div>
         </div>
+
+        {/* Bepul tarif limiti ogohlantirishi (agar 3 tadan oshsa) */}
+        {!isPro && projects.length >= 3 && !isCreatingNew && (
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl mb-4 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-navy-900 font-medium">
+              <Crown className="w-4 h-4 text-amber-600 fill-amber-500 flex-shrink-0" />
+              <span>Bepul tarifda maksimal 3 ta loyiha saqlash mumkin. Cheksiz papkalar ochish uchun PRO ga ulaning.</span>
+            </div>
+            <button
+              onClick={() => {
+                onClose();
+                onOpenPricing?.();
+              }}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-navy-950 font-black rounded-xl text-xs whitespace-nowrap shadow-xs active:scale-95 transition-all"
+            >
+              PRO ga o'tish
+            </button>
+          </div>
+        )}
 
         {/* Yangi loyiha yaratish formasi (agar ochilgan bo'lsa) */}
         {isCreatingNew && (

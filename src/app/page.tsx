@@ -380,7 +380,13 @@ export default function SolarGridApp() {
         onOpenProjects={() => setIsProjectsModalOpen(true)}
         onOpenPricing={() => setIsPricingModalOpen(true)}
         onOpenAuth={() => setIsAuthModalOpen(true)}
-        onOpenSmartLayout={() => setIsSmartLayoutOpen(true)}
+        onOpenSmartLayout={() => {
+          if (!isPro) {
+            setIsPricingModalOpen(true);
+          } else {
+            setIsSmartLayoutOpen(true);
+          }
+        }}
         onOpenRoofConfig={() => setIsRoofConfigOpen(true)}
         onOpenEstimate={() => setIsEstimateOpen(true)}
         onShare={handleShare}
@@ -418,7 +424,13 @@ export default function SolarGridApp() {
         roof={currentProject.roof}
         panels={currentProject.panels}
         onAddPanel={handleAddPanel}
-        onOpenSmartLayout={() => setIsSmartLayoutOpen(true)}
+        onOpenSmartLayout={() => {
+          if (!isPro) {
+            setIsPricingModalOpen(true);
+          } else {
+            setIsSmartLayoutOpen(true);
+          }
+        }}
         onClearPanels={handleClearPanels}
         customPanels={customPanels}
         onAddCustomSpec={handleAddCustomSpec}
@@ -434,6 +446,8 @@ export default function SolarGridApp() {
         onCreateProject={handleCreateProject}
         onDeleteProject={handleDeleteProject}
         onDuplicateProject={handleDuplicateProject}
+        isPro={isPro}
+        onOpenPricing={() => setIsPricingModalOpen(true)}
       />
 
       {/* 5. Tariflar va PRO Sotib olish Modali */}
