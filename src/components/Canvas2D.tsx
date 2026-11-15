@@ -16,7 +16,6 @@ import {
   Copy,
   Compass,
   AlertTriangle,
-  Move,
 } from 'lucide-react';
 
 interface Canvas2DProps {
@@ -535,16 +534,39 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
 
   const selectedPanel = panels.find((p) => p.id === selectedPanelId);
 
-  // Tanlangan panelning ekrandagi koordinatalari
-  const panelScreenX = selectedPanel ? selectedPanel.x * scale + offset.x : 0;
-  const panelScreenY = selectedPanel ? selectedPanel.y * scale + offset.y : 0;
-  const panelScreenW = selectedPanel ? selectedPanel.width * scale : 0;
-  const panelScreenH = selectedPanel ? selectedPanel.height * scale : 0;
+  // Tanlangan panelning FIXED ekran koordinatalarini hisoblash
+  // Bu koordinatalar barcha drawerlar va elementlardan ustda turadi (z-index: 9999)
+  const [toolbarCoords, setToolbarCoords] = useState<{ x: number; y: number } | null>(null);
 
-  // Toolbar joylashuvi (panel ustida yoki pastida)
-  const isAboveSafe = panelScreenY - 60 > 10;
-  const toolbarTop = isAboveSafe ? panelScreenY - 56 : panelScreenY + panelScreenH + 12;
-  const toolbarLeft = panelScreenX + panelScreenW / 2;
+  useEffect(() => {
+    if (!selectedPanel || !containerRef.current) {
+      setToolbarCoords(null);
+      return;
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const panelCenterX = rect.left + offset.x + (selectedPanel.x + selectedPanel.width / 2) * scale;
+    const panelTopY = rect.top + offset.y + selectedPanel.y * scale;
+    const panelHeightPx = selectedPanel.height * scale;
+
+    // Gorizontal: ekrandan chiqib ketmaslik uchun clamp
+    const safeX = Math.max(160, Math.min(window.innerWidth - 160, panelCenterX));
+
+    // Vertikal: agar panel yuqorida bo'lsa panel ostiga, aks holda panel tepasiga qo'yish
+    let safeY = panelTopY - 60;
+    if (safeY < 75) {
+      // Tepa Header tagiga tushib qolmasligi uchun panel tagiga qo'yiladi
+      safeY = panelTopY + panelHeightPx + 16;
+    }
+
+    // Pastki panel katalogi balandligini hisobga olish (pastki cheklov)
+    const bottomSheetLimit = window.innerHeight - 130;
+    if (safeY > bottomSheetLimit) {
+      safeY = Math.max(80, panelTopY - 60);
+    }
+
+    setToolbarCoords({ x: safeX, y: safeY });
+  }, [selectedPanel, scale, offset]);
 
   return (
     <div
@@ -615,14 +637,14 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
         </div>
       )}
 
-      {/* CRITICAL UI FIX: TANLANGAN PANEL BOSHQARUV MENYUSI (TOOLBAR)
-          Doimo z-50 da, barcha elementlardan ustda, bosilishi 100% kafolatlangan! */}
-      {selectedPanel && (
+      {/* CRITICAL FIX: FIXED POSITION FLOATING TOOLBAR (z-index: 9999)
+          Hech qachon panellar katalogi ostida qolmaydi, doimo eng yuqori qatlamda! */}
+      {selectedPanel && toolbarCoords && (
         <div
-          className="absolute z-50 flex items-center gap-1.5 bg-white/95 backdrop-blur-xl px-3 py-1.5 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.25)] border-2 border-amber-400 animate-in fade-in zoom-in-95"
+          className="fixed z-[9999] flex items-center gap-1.5 sm:gap-2 bg-navy-950/95 text-white backdrop-blur-xl px-3 sm:px-4 py-2 rounded-2xl shadow-[0_15px_45px_rgba(0,0,0,0.6)] border-2 border-amber-400 animate-in fade-in zoom-in-95 pointer-events-auto select-none"
           style={{
-            top: `${Math.max(12, toolbarTop)}px`,
-            left: `${toolbarLeft}px`,
+            top: `${toolbarCoords.y}px`,
+            left: `${toolbarCoords.x}px`,
             transform: 'translateX(-50%)',
           }}
           onMouseDown={(e) => e.stopPropagation()}
@@ -631,10 +653,10 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Panel info */}
-          <div className="flex items-center gap-1 pr-2 border-r border-cream-300 text-navy-950 font-black text-xs whitespace-nowrap">
-            <span className="text-amber-600">{selectedPanel.power}W</span>
-            <span className="text-[10px] font-semibold text-gray-500">
-              ({selectedPanel.width}×{selectedPanel.height} sm)
+          <div className="flex items-center gap-1.5 pr-2.5 border-r border-navy-700 text-xs font-black whitespace-nowrap">
+            <span className="text-amber-400 font-mono">{selectedPanel.power}W</span>
+            <span className="text-[10px] text-gray-400 font-semibold hidden xs:inline">
+              ({selectedPanel.width}×{selectedPanel.height}sm)
             </span>
           </div>
 
@@ -642,10 +664,10 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
           <button
             type="button"
             onClick={(e) => handleRotatePanel(selectedPanel.id, e)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-cream-100 hover:bg-amber-100 text-navy-900 hover:text-amber-900 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-navy-800 hover:bg-amber-500 text-white hover:text-navy-950 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
             title="90 gradusga aylantirish (Portret / Peyzaj)"
           >
-            <RotateCw className="w-3.5 h-3.5 text-amber-600" />
+            <RotateCw className="w-3.5 h-3.5 text-amber-400 group-hover:text-navy-950" />
             <span>90° Aylantirish</span>
           </button>
 
@@ -653,10 +675,10 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
           <button
             type="button"
             onClick={(e) => handleDuplicatePanel(selectedPanel.id, e)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-cream-100 hover:bg-cream-200 text-navy-900 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-navy-800 hover:bg-navy-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
             title="Yana bitta nusxa qo'shish"
           >
-            <Copy className="w-3.5 h-3.5 text-navy-700" />
+            <Copy className="w-3.5 h-3.5 text-gray-300" />
             <span className="hidden sm:inline">Nusxa</span>
           </button>
 
@@ -664,7 +686,7 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
           <button
             type="button"
             onClick={(e) => handleDeletePanel(selectedPanel.id, e)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-500 text-red-600 hover:text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-red-600/90 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
             title="Panelni o'chirish"
           >
             <Trash2 className="w-3.5 h-3.5" />

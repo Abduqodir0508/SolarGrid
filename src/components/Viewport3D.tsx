@@ -15,8 +15,8 @@ interface Viewport3DProps {
 }
 
 /**
- * Haqiqiy quyosh paneli yuzasi uchun yuqori aniqlikdagi procedural tekstura
- * To'q ko'k/kulrang tus, monokristall kremniy katakchalar va kumushrang busbar chiziqlari
+ * Haqiqiy fotovoltaik monokristall quyosh paneli yuzasi uchun yuqori aniqlikdagi tekstura
+ * To'q ko'k/kulrang fon, kremniy katakchalari, ingichka kumush panjaralar va Multi-Busbar metallik simlar
  */
 function createPhotovoltaicTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -24,36 +24,37 @@ function createPhotovoltaicTexture(): THREE.CanvasTexture {
   canvas.height = 2048;
   const ctx = canvas.getContext('2d')!;
 
-  // 1. Asosiy fotovoltaik monokristall fon (chuqur to'q ko'k-kulrang metallik gradient)
+  // 1. Asosiy fotovoltaik fon (chuqur to'q monokristall ko'k/antrasit)
   const bgGrad = ctx.createLinearGradient(0, 0, 1024, 2048);
-  bgGrad.addColorStop(0, '#0B1728');
-  bgGrad.addColorStop(0.3, '#10233D');
-  bgGrad.addColorStop(0.7, '#162C4B');
-  bgGrad.addColorStop(1, '#0C1A2D');
+  bgGrad.addColorStop(0, '#06101E');
+  bgGrad.addColorStop(0.3, '#0A182C');
+  bgGrad.addColorStop(0.7, '#0E223D');
+  bgGrad.addColorStop(1, '#081424');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, 1024, 2048);
 
-  // 2. Quyosh kremniy katakchalari (Wafer cells: 10 qator x 6 ustun)
+  // 2. Monokristall katakchalar (M10/G12 half-cut quyosh paneli: 12 qator x 6 ustun)
   const cols = 6;
-  const rows = 10;
-  const padding = 8;
-  const cellW = (1024 - (cols + 1) * padding) / cols;
-  const cellH = (2048 - (rows + 1) * padding) / rows;
+  const rows = 12;
+  const gap = 6;
+  const cellW = (1024 - (cols + 1) * gap) / cols;
+  const cellH = (2048 - (rows + 1) * gap) / rows;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x = padding + c * (cellW + padding);
-      const y = padding + r * (cellH + padding);
+      const x = gap + c * (cellW + gap);
+      const y = gap + r * (cellH + gap);
 
-      // Katak ichki qoplamasi (Anti-reflective coating gradient)
+      // Monokristall kremniy yuzasi gradienti
       const cellGrad = ctx.createLinearGradient(x, y, x + cellW, y + cellH);
-      cellGrad.addColorStop(0, '#0F223D');
-      cellGrad.addColorStop(0.5, '#1A355A');
-      cellGrad.addColorStop(1, '#0D1E36');
+      cellGrad.addColorStop(0, '#0C1C33');
+      cellGrad.addColorStop(0.4, '#132B4F');
+      cellGrad.addColorStop(0.8, '#102544');
+      cellGrad.addColorStop(1, '#0B1A2F');
       ctx.fillStyle = cellGrad;
 
-      // Monokristall katak shakli (4 burchagi kesilgan psevdo-kvadrat)
-      const chamfer = 12;
+      // Kesilgan burchakli monokristall katak (Chamfered wafer cell)
+      const chamfer = 10;
       ctx.beginPath();
       ctx.moveTo(x + chamfer, y);
       ctx.lineTo(x + cellW - chamfer, y);
@@ -66,13 +67,13 @@ function createPhotovoltaicTexture(): THREE.CanvasTexture {
       ctx.closePath();
       ctx.fill();
 
-      // Nozik gorizontal kumushrang tok o'tkazgich panjaralari (Finger lines)
-      ctx.strokeStyle = 'rgba(215, 228, 242, 0.22)';
-      ctx.lineWidth = 1.2;
-      for (let fy = y + 10; fy < y + cellH - 8; fy += 14) {
+      // Nozik kumush panjaralar (Silver finger lines)
+      ctx.strokeStyle = 'rgba(215, 230, 245, 0.28)';
+      ctx.lineWidth = 1.0;
+      for (let fy = y + 8; fy < y + cellH - 6; fy += 12) {
         ctx.beginPath();
-        ctx.moveTo(x + 5, fy);
-        ctx.lineTo(x + cellW - 5, fy);
+        ctx.moveTo(x + 4, fy);
+        ctx.lineTo(x + cellW - 4, fy);
         ctx.stroke();
       }
     }
@@ -81,18 +82,20 @@ function createPhotovoltaicTexture(): THREE.CanvasTexture {
   // 3. Multi-Busbar (MBB) — 10 ta vertikal yaltiroq kumushrang o'tkazgich simlar
   const busbarCount = 10;
   const busbarSpacing = 1024 / (busbarCount + 1);
+
   for (let b = 1; b <= busbarCount; b++) {
     const bx = b * busbarSpacing;
-    // O'tkazgich asosi (kumush/kulrang yaltiroq)
-    ctx.strokeStyle = 'rgba(226, 235, 245, 0.75)';
-    ctx.lineWidth = 3.5;
+
+    // Kumush sim asosi
+    ctx.strokeStyle = 'rgba(225, 235, 248, 0.85)';
+    ctx.lineWidth = 3.2;
     ctx.beginPath();
     ctx.moveTo(bx, 0);
     ctx.lineTo(bx, 2048);
     ctx.stroke();
 
-    // Nozik markaziy nur aksi
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    // Markaziy nurlanish (metallic reflection core)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(bx, 0);
@@ -100,10 +103,15 @@ function createPhotovoltaicTexture(): THREE.CanvasTexture {
     ctx.stroke();
   }
 
+  // 4. Panelning tashqi montaj hoshiyasi (Frame inner line)
+  ctx.strokeStyle = 'rgba(200, 215, 235, 0.4)';
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(3, 3, 1018, 2042);
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.ClampToEdgeWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.anisotropy = 8;
+  texture.anisotropy = 16;
   return texture;
 }
 
@@ -132,8 +140,8 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     const height = container.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#F1EFEA');
-    scene.fog = new THREE.FogExp2('#F1EFEA', 0.015);
+    scene.background = new THREE.Color('#EFECE6'); // Sokin iliq me'moriy osmon foni
+    scene.fog = new THREE.FogExp2('#EFECE6', 0.015);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
@@ -146,7 +154,7 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.15;
     rendererRef.current = renderer;
 
     container.appendChild(renderer.domElement);
@@ -161,10 +169,10 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     controlsRef.current = controls;
 
     // Yorug'lik
-    const hemiLight = new THREE.HemisphereLight('#FFFFFF', '#CBD5E1', 0.65);
+    const hemiLight = new THREE.HemisphereLight('#FFFFFF', '#CBD5E1', 0.6);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight('#FFF9EB', 2.3);
+    const sunLight = new THREE.DirectionalLight('#FFF9EB', 2.1);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
@@ -207,7 +215,7 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     scene.add(roofGroup);
     roofGroupRef.current = roofGroup;
 
-    // Procedural fotovoltaik tekstura yaratish
+    // Fotovoltaik teksturani initsializatsiya qilish
     panelTextureRef.current = createPhotovoltaicTexture();
 
     let animationFrameId: number;
@@ -257,13 +265,13 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     const z = Math.cos(azimuthRad) * horizontalDist;
 
     sunLightRef.current.position.set(x, y, z);
-    sunLightRef.current.intensity = sun.altitudeDeg > 0 ? 2.4 * sun.intensity : 0.05;
+    sunLightRef.current.intensity = sun.altitudeDeg > 0 ? 2.2 * sun.intensity : 0.05;
 
     sunMeshRef.current.position.set(x, y, z);
     sunMeshRef.current.visible = sun.altitudeDeg > 0;
   }, [simulation.time, simulation.season]);
 
-  // 3. Tom va Panellarni 3D da qayta qurish (Realistik metallik va tekstura bilan)
+  // 3. Tom va Panellarni 3D da qayta qurish (Realistik metallik fotovoltaik yuza)
   useEffect(() => {
     if (!roofGroupRef.current) return;
     const group = roofGroupRef.current;
@@ -294,28 +302,34 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
 
     tiltedGroup.add(roofMesh);
 
-    // Umumiy materiallar:
-    // 1. Panelning fotovoltaik yuzasi (Teksturali, quyosh nurida metallik yaltirovchi shisha va kremniy)
+    // MATERIALlar:
+    // 1. Fotovoltaik haqiqiy quyosh oynasi (Teksturali, quyosh nurida kumush simlari yaltiraydi)
     const panelSurfaceMat = new THREE.MeshPhysicalMaterial({
       map: panelTextureRef.current || undefined,
-      color: '#152B4D',
-      roughness: 0.14,
-      metalness: 0.75,
-      clearcoat: 1.0,           // Quyosh nurida haqiqiy quyosh panelidek yarqiraydi
-      clearcoatRoughness: 0.08,
-      reflectivity: 0.85,
+      color: 0xffffff,              // Rang o'zgarmasligi uchun toza oq asos
+      roughness: 0.16,              // Silliq toblangan quyosh oynasi
+      metalness: 0.65,              // Kumush panjaralar va kremniy metallik akslanishi
+      clearcoat: 0.95,              // Ustki toblangan shisha qatlami
+      clearcoatRoughness: 0.06,
+      reflectivity: 0.88,
     });
 
-    // 2. Anodlangan kumush/kulrang alyuminiy ramka (Anodized silver-grey aluminum)
+    // 2. Anodlangan kumushrang alyuminiy ramka
     const frameMat = new THREE.MeshStandardMaterial({
-      color: '#A1A1AA',
-      roughness: 0.24,
-      metalness: 0.86,
+      color: '#94A3B8',
+      roughness: 0.25,
+      metalness: 0.88,
     });
 
-    // 3. Montaj relslari (Karkas)
+    // 3. Qora orqa qatlam (Backsheet)
+    const backsheetMat = new THREE.MeshStandardMaterial({
+      color: '#080E1A',
+      roughness: 0.9,
+    });
+
+    // 4. Montaj relslari (Karkas)
     const railMat = new THREE.MeshStandardMaterial({
-      color: '#71717A',
+      color: '#64748B',
       roughness: 0.28,
       metalness: 0.9,
     });
@@ -332,21 +346,28 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
       const panelGroup = new THREE.Group();
       panelGroup.position.set(posX, posY, posZ);
 
-      // Alyuminiy ramka
+      // A) Alyuminiy ramka (Frame)
       const frameGeom = new THREE.BoxGeometry(pWM, pThickM, pHM);
       const frameMesh = new THREE.Mesh(frameGeom, frameMat);
       frameMesh.castShadow = true;
       frameMesh.receiveShadow = true;
       panelGroup.add(frameMesh);
 
-      // Fotovoltaik ustki shisha/kremniy qatlam
-      const cellGeom = new THREE.BoxGeometry(pWM * 0.965, pThickM * 1.06, pHM * 0.965);
-      const cellMesh = new THREE.Mesh(cellGeom, panelSurfaceMat);
-      cellMesh.castShadow = true;
-      cellMesh.receiveShadow = true;
-      panelGroup.add(cellMesh);
+      // B) Qora orqa asos (Dark core)
+      const coreGeom = new THREE.BoxGeometry(pWM * 0.97, pThickM * 0.9, pHM * 0.97);
+      const coreMesh = new THREE.Mesh(coreGeom, backsheetMat);
+      panelGroup.add(coreMesh);
 
-      // Montaj relslari (karkas)
+      // C) ASOSIY QUYOSH PANELI YUZASI (PlaneGeometry bilan tekis, yuqori aniqlikdagi tekstura)
+      const surfaceGeom = new THREE.PlaneGeometry(pWM * 0.965, pHM * 0.965);
+      const surfaceMesh = new THREE.Mesh(surfaceGeom, panelSurfaceMat);
+      surfaceMesh.rotation.x = -Math.PI / 2;
+      surfaceMesh.position.y = pThickM / 2 + 0.002; // Ramkadan 2mm tepada tekis oynadek yotadi
+      surfaceMesh.castShadow = true;
+      surfaceMesh.receiveShadow = true;
+      panelGroup.add(surfaceMesh);
+
+      // D) Montaj relslari (karkas)
       const railGeom = new THREE.BoxGeometry(pWM * 1.02, 0.04, 0.04);
       const rail1 = new THREE.Mesh(railGeom, railMat);
       rail1.position.set(0, -pThickM / 2 - 0.02, -pHM / 4);
@@ -380,7 +401,7 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
           <span>3D Tom: {roof.pitch}° qiyalik</span>
         </div>
         <div className="text-[11px] text-gray-500 mt-0.5">
-          Quyosh nuri panel shishasida metallik akslanadi • 360° aylantiring
+          Real fotovoltaik tekstura va metallik shisha reflection • 360° aylantiring
         </div>
       </div>
     </div>
