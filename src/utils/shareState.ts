@@ -32,12 +32,13 @@ export function createDefaultProject(
       material: 'metal_sheet',
     },
     // Foydalanuvchi yangi papka / loyiha ochganda tom mutlaqo bo'sh bo'ladi!
+    // Boshlang'ich loyihada esa panellar tomning tepa-markazida (aniq koordinatada) turadi
     panels: isEmpty ? [] : [
       {
         id: `p1-${Date.now()}`,
         specId: 'longi-himo6-550',
-        x: 370,
-        y: 280,
+        x: 385.6,
+        y: 80,
         rotation: 0,
         width: 113.4,
         height: 227.8,
@@ -48,8 +49,8 @@ export function createDefaultProject(
       {
         id: `p2-${Date.now()}`,
         specId: 'longi-himo6-550',
-        x: 485.4,
-        y: 280,
+        x: 501.0,
+        y: 80,
         rotation: 0,
         width: 113.4,
         height: 227.8,

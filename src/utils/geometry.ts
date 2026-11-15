@@ -135,6 +135,144 @@ export function calculateRulerMeasurements(
 }
 
 /**
+ * Yangi qo'shilayotgan panel uchun tom ustidagi eng qulay va optimal koordinatalarni topish (Auto-Placement)
+ * Panellarni tomning markazi yoki tepa qismidan boshlab, chiroyli qatorlar (grid) ko'rinishida teradi.
+ * Tom chegaralaridan chiqib ketmaslik va to'qnashuvsiz joylashish 100% kafolatlanadi.
+ */
+export function calculateNextPanelPlacement(
+  spec: { id: string; width: number; height: number; power: number },
+  existingPanels: PlacedPanel[],
+  roof: Roof
+): { x: number; y: number } {
+  const panelW = spec.width;
+  const panelH = spec.height;
+  const gap = MOUNTING_GAP_CM; // 2 sm
+  const margin = ROOF_SAFETY_MARGIN_CM; // 20 sm xavfsizlik cheti
+
+  // 1. Agar tomda hali panel bo'lmasa:
+  // Panelni tomning tepa qismi yoki markaziga, gorizontal bo'yicha markazlashtirib joylashtirish
+  if (existingPanels.length === 0) {
+    const startX = Math.max(margin, Math.round(((roof.width - panelW) / 2) * 10) / 10);
+    // Tepa qismda optimal oraliq (30 sm dan 80 sm gacha, tom balandligining ~15% qismi)
+    const optimalTopY = Math.max(
+      margin + 10,
+      Math.min(80, Math.round((roof.height - panelH) * 0.15))
+    );
+    // Agar tom kichik bo'lsa, sof vertikal markaz
+    const startY =
+      roof.height - panelH - margin < optimalTopY
+        ? Math.max(margin, Math.round(((roof.height - panelH) / 2) * 10) / 10)
+        : optimalTopY;
+
+    return { x: startX, y: startY };
+  }
+
+  // 2. Agar panellar mavjud bo'lsa:
+  const last = existingPanels[existingPanels.length - 1];
+
+  // A) Oxirgi panelning O'NG tomoniga qo'shib ko'rish (o'sha qator davomi)
+  const candidateRightX = Math.round((last.x + last.width + gap) * 10) / 10;
+  const candidateRightY = last.y;
+
+  if (candidateRightX + panelW <= roof.width - margin) {
+    const candidateRight: PlacedPanel = {
+      id: 'candidate-right',
+      specId: spec.id,
+      x: candidateRightX,
+      y: candidateRightY,
+      rotation: 0,
+      width: panelW,
+      height: panelH,
+      power: spec.power,
+      isValid: true,
+    };
+    const { isValid } = validatePanelPlacement(candidateRight, existingPanels, roof);
+    if (isValid) {
+      return { x: candidateRightX, y: candidateRightY };
+    }
+  }
+
+  // B) O'ng tomonga sig'madi: keyingi qatorni PASTGA tushirish
+  // Qatorning eng chap boshlanish nuqtasini topish
+  const currentRowPanels = existingPanels.filter((p) => Math.abs(p.y - last.y) < 20);
+  const minRowX =
+    currentRowPanels.length > 0
+      ? Math.min(...currentRowPanels.map((p) => p.x))
+      : Math.max(margin, Math.round(((roof.width - panelW) / 2) * 10) / 10);
+
+  const candidateNextRowY = Math.round((last.y + last.height + gap) * 10) / 10;
+
+  if (candidateNextRowY + panelH <= roof.height - margin) {
+    const candidateNextRow: PlacedPanel = {
+      id: 'candidate-next-row',
+      specId: spec.id,
+      x: minRowX,
+      y: candidateNextRowY,
+      rotation: 0,
+      width: panelW,
+      height: panelH,
+      power: spec.power,
+      isValid: true,
+    };
+    const { isValid } = validatePanelPlacement(candidateNextRow, existingPanels, roof);
+    if (isValid) {
+      return { x: minRowX, y: candidateNextRowY };
+    }
+  }
+
+  // C) Chap tomondagi bo'shliqni tekshirish
+  if (minRowX - gap - panelW >= margin) {
+    const candidateLeftX = Math.round((minRowX - gap - panelW) * 10) / 10;
+    const candidateLeft: PlacedPanel = {
+      id: 'candidate-left',
+      specId: spec.id,
+      x: candidateLeftX,
+      y: last.y,
+      rotation: 0,
+      width: panelW,
+      height: panelH,
+      power: spec.power,
+      isValid: true,
+    };
+    const { isValid } = validatePanelPlacement(candidateLeft, existingPanels, roof);
+    if (isValid) {
+      return { x: candidateLeftX, y: last.y };
+    }
+  }
+
+  // D) Agar oddiy qator davomi to'lgan bo'lsa: Tom ustidagi birinchi bo'sh joyni skanerlash
+  // Tepadan pastga, chapdan o'ngga qarab qidirish
+  const stepX = panelW + gap;
+  const stepY = panelH + gap;
+
+  for (let y = margin; y + panelH <= roof.height - margin; y += stepY) {
+    for (let x = margin; x + panelW <= roof.width - margin; x += stepX) {
+      const candidate: PlacedPanel = {
+        id: 'candidate-scan',
+        specId: spec.id,
+        x: Math.round(x * 10) / 10,
+        y: Math.round(y * 10) / 10,
+        rotation: 0,
+        width: panelW,
+        height: panelH,
+        power: spec.power,
+        isValid: true,
+      };
+      const { isValid } = validatePanelPlacement(candidate, existingPanels, roof);
+      if (isValid) {
+        return { x: candidate.x, y: candidate.y };
+      }
+    }
+  }
+
+  // E) Yakuniy xavfsiz holat (tom ichida markazlashtirilgan yoki tepada)
+  const safeX = Math.max(margin, Math.min(roof.width - panelW - margin, Math.round(((roof.width - panelW) / 2) * 10) / 10));
+  const safeY = Math.max(margin, Math.min(roof.height - panelH - margin, 60));
+
+  return { x: safeX, y: safeY };
+}
+
+/**
  * Magnit yopishish (Snap to Neighbor & Snap to Roof Margins)
  * Surilayotgan panel boshqa panelga yoki tom chetiga yaqinlashganda avtomatik tortilib yopishadi
  */

@@ -29,6 +29,7 @@ import {
 } from '@/lib/supabase';
 import { calculateProjectMetrics } from '@/utils/solarCalc';
 import { sanitizeText } from '@/utils/sanitize';
+import { calculateNextPanelPlacement, validatePanelPlacement } from '@/utils/geometry';
 
 import { Header } from '@/components/Header';
 import { Canvas2D } from '@/components/Canvas2D';
@@ -264,10 +265,24 @@ export default function SolarGridApp() {
   };
 
   const handleRoofChange = (newRoof: Roof) => {
-    updateCurrentProject((prev) => ({
-      ...prev,
-      roof: newRoof,
-    }));
+    updateCurrentProject((prev) => {
+      // Tom o'lchamlari o'zgarganda panellarning tom ichida qolishini ta'minlash (Clamp)
+      const adjustedPanels = prev.panels.map((p) => {
+        const maxX = Math.max(0, newRoof.width - p.width);
+        const maxY = Math.max(0, newRoof.height - p.height);
+        const clampedX = Math.round(Math.min(Math.max(0, p.x), maxX) * 10) / 10;
+        const clampedY = Math.round(Math.min(Math.max(0, p.y), maxY) * 10) / 10;
+        const candidate = { ...p, x: clampedX, y: clampedY };
+        const { isValid, collisionWith } = validatePanelPlacement(candidate, prev.panels, newRoof);
+        return { ...candidate, isValid, collisionWith };
+      });
+
+      return {
+        ...prev,
+        roof: newRoof,
+        panels: adjustedPanels,
+      };
+    });
   };
 
   const handlePanelsChange = (newPanels: PlacedPanel[]) => {
@@ -278,31 +293,21 @@ export default function SolarGridApp() {
   };
 
   const handleAddPanel = (spec: SolarPanelSpec) => {
-    const newW = spec.width;
-    const newH = spec.height;
-
-    let startX = Math.round((currentProject.roof.width - newW) / 2);
-    let startY = Math.round((currentProject.roof.height - newH) / 2);
-
-    if (currentProject.panels.length > 0) {
-      const last = currentProject.panels[currentProject.panels.length - 1];
-      if (last.x + last.width + 2 + newW <= currentProject.roof.width) {
-        startX = last.x + last.width + 2;
-        startY = last.y;
-      } else if (last.y + last.height + 2 + newH <= currentProject.roof.height) {
-        startX = Math.max(20, (currentProject.roof.width - newW) / 2);
-        startY = last.y + last.height + 2;
-      }
-    }
+    // Aqlli koordinata hisoblagich: tomning tepa/markazidan boshlab tartibli joylashtiradi
+    const { x, y } = calculateNextPanelPlacement(
+      spec,
+      currentProject.panels,
+      currentProject.roof
+    );
 
     const newPanel: PlacedPanel = {
       id: `p-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       specId: spec.id,
-      x: startX,
-      y: startY,
+      x,
+      y,
       rotation: 0,
-      width: newW,
-      height: newH,
+      width: spec.width,
+      height: spec.height,
       power: spec.power,
       label: `${spec.model} #${currentProject.panels.length + 1}`,
       isValid: true,

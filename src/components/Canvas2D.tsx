@@ -51,18 +51,27 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
   const [hasCollision, setHasCollision] = useState<boolean>(false);
 
   // Ekranga avtomatik moslashtirish (Fit to screen)
+  // Pastki panel katalogi drawerini hisobga olib, tomni ochiq maydonda markazlashtiradi
   const fitToScreen = useCallback(() => {
     if (!containerRef.current) return;
     const { clientWidth, clientHeight } = containerRef.current;
     if (clientWidth === 0 || clientHeight === 0) return;
 
-    const margin = 120;
-    const scaleX = (clientWidth - margin) / roof.width;
-    const scaleY = (clientHeight - margin) / roof.height;
-    const newScale = Math.min(scaleX, scaleY, 1.4);
+    // Pastki panel katalogi (Bottom Sheet) balandligini hisobga olish
+    // Desktopda ~116px, mobilda ~96px pastki qism katalog bilan band
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    const bottomSheetH = isMobile ? 96 : 116;
+    const availableHeight = Math.max(200, clientHeight - bottomSheetH);
+
+    const marginX = isMobile ? 40 : 80;
+    const marginY = isMobile ? 40 : 60;
+    const scaleX = (clientWidth - marginX) / roof.width;
+    const scaleY = (availableHeight - marginY) / roof.height;
+    const newScale = Math.min(scaleX, scaleY, 1.3);
 
     const newOffsetX = (clientWidth - roof.width * newScale) / 2;
-    const newOffsetY = (clientHeight - roof.height * newScale) / 2;
+    // Tomni aynan ko'rinadigan bo'sh ish maydonida markazlashtirish (pastki drawer ustida)
+    const newOffsetY = Math.max(16, (availableHeight - roof.height * newScale) / 2 + 12);
 
     setScale(Math.max(0.08, newScale));
     setOffset({ x: newOffsetX, y: newOffsetY });
@@ -161,25 +170,34 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
     const target = panels.find((p) => p.id === id);
     if (!target) return;
 
-    let newX = target.x + target.width + 2; // 2 sm montaj oraliq
+    // A) Avval o'ng tomonga qo'yib ko'rish (o'sha qator davomi)
+    let newX = target.x + target.width + 2;
     let newY = target.y;
 
-    if (newX + target.width > roof.width) {
-      newX = target.x;
+    // B) Agar o'ng tomonga sig'masa, qatorning boshidan pastga tushirish
+    if (newX + target.width > roof.width - 20) {
+      const rowPanels = panels.filter((p) => Math.abs(p.y - target.y) < 20);
+      const minX = rowPanels.length > 0 ? Math.min(...rowPanels.map((p) => p.x)) : 20;
+      newX = minX;
       newY = target.y + target.height + 2;
     }
 
-    if (newY + target.height > roof.height) {
-      newX = Math.max(20, target.x - 20);
-      newY = Math.max(20, target.y - 20);
+    // C) Agar pastga ham sig'masa, yuqoridagi qatordan joy tekshirish
+    if (newY + target.height > roof.height - 20) {
+      newY = Math.max(20, target.y - target.height - 2);
+      newX = target.x;
     }
+
+    // D) Tom chegarasida qat'iy ushlash (Clamp)
+    newX = Math.max(0, Math.min(newX, roof.width - target.width));
+    newY = Math.max(0, Math.min(newY, roof.height - target.height));
 
     const clone: PlacedPanel = {
       ...target,
       id: `p-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       x: Math.round(newX * 10) / 10,
       y: Math.round(newY * 10) / 10,
-      label: `${target.label || 'Panel'} #copy`,
+      label: `${target.label || 'Panel'} #nusxa`,
       isValid: true,
     };
 
@@ -257,10 +275,14 @@ export const Canvas2D: React.FC<Canvas2DProps> = ({
       activePanel.id
     );
 
+    // Tom ichida qolishini qat'iy kafolatlash (Clamp to roof boundaries)
+    const clampedX = Math.round(Math.max(0, Math.min(snapped.x, roof.width - activePanel.width)) * 10) / 10;
+    const clampedY = Math.round(Math.max(0, Math.min(snapped.y, roof.height - activePanel.height)) * 10) / 10;
+
     const candidate: PlacedPanel = {
       ...activePanel,
-      x: snapped.x,
-      y: snapped.y,
+      x: clampedX,
+      y: clampedY,
     };
 
     const { isValid, collisionWith } = validatePanelPlacement(candidate, panels, roof);
