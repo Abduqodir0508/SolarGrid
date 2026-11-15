@@ -100,7 +100,11 @@ export default function SolarGridApp() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const user = session?.user || null;
       setCurrentUser(user);
-      getUserProStatus(user?.id).then(setIsPro);
+      if (user) {
+        getUserProStatus(user.id).then(setIsPro);
+      } else {
+        setIsPro(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -443,7 +447,11 @@ export default function SolarGridApp() {
         currentUser={currentUser}
         onAuthSuccess={(user) => {
           setCurrentUser(user);
-          if (user) getUserProStatus(user.id).then(setIsPro);
+          if (user) {
+            getUserProStatus(user.id).then(setIsPro);
+          } else {
+            setIsPro(false);
+          }
         }}
         onOpenPricing={() => setIsPricingModalOpen(true)}
         isPro={isPro}

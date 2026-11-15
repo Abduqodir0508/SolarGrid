@@ -4,13 +4,20 @@ import { ProjectData } from '@/types/solar';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rcurwgkxpiivcfasahfh.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_JVyT166Gyz8pJ-1qN9rY2g_SPM-nsQB';
 
-// Brauzer uchun Supabase mijozi
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
   },
 });
+
+// Eski noto'g'ri global pro kalitlarini xavfsiz tozalash
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem('solargrid_pro_active');
+    localStorage.removeItem('solargrid_pro_guest');
+  } catch (e) {}
+}
 
 export interface UserProfile {
   id: string;
@@ -20,22 +27,31 @@ export interface UserProfile {
 }
 
 /**
- * Foydalanuvchi PRO statusini o'qish (localStorage va Supabase user_metadata)
+ * Foydalanuvchi PRO statusini tekshirish
+ * Yangi foydalanuvchi yoki ro'yxatdan o'tmagan mehmon uchun qat'iy FALSE bo'ladi!
  */
 export async function getUserProStatus(userId?: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
-  // 1. LocalStorage dan tekshirish
-  const localPro = localStorage.getItem(`solargrid_pro_${userId || 'guest'}`);
-  if (localPro === 'true') return true;
+  // Agar mehmon bo'lsa, qat'iy ravishda false (avtomatik pro bo'lmaydi!)
+  if (!userId) {
+    return false;
+  }
 
-  // 2. Supabase foydalanuvchi metadatasidan tekshirish
+  // 1. Foydalanuvchining shaxsiy ID si bo'yicha localStorage dan tekshirish
+  const userProKey = `solargrid_pro_user_${userId}`;
+  const localPro = localStorage.getItem(userProKey);
+  if (localPro === 'true') {
+    return true;
+  }
+
+  // 2. Supabase auth metadatasidan tekshirish
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+    if (user && user.id === userId) {
       const isPro = !!user.user_metadata?.is_pro;
       if (isPro) {
-        localStorage.setItem(`solargrid_pro_${user.id}`, 'true');
+        localStorage.setItem(userProKey, 'true');
         return true;
       }
     }
@@ -47,17 +63,22 @@ export async function getUserProStatus(userId?: string): Promise<boolean> {
 }
 
 /**
- * PRO statusini faollashtirish (To'lov cheki yuborilganda yoki mock to'lovda)
+ * PRO statusini faollashtirish
+ * Faqatgina haqiqiy to'lov cheki yoki admin kodi yuborilgandagina ishlaydi!
  */
-export async function activateProStatus(userId?: string, referenceCode?: string): Promise<boolean> {
+export async function activateProStatus(
+  userId?: string,
+  referenceCode?: string,
+  paymentMethod?: 'click' | 'payme'
+): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
   try {
-    const targetId = userId || 'guest';
-    localStorage.setItem(`solargrid_pro_${targetId}`, 'true');
-    localStorage.setItem('solargrid_pro_active', 'true');
+    const effectiveUserId = userId || 'temp_user';
+    const userProKey = `solargrid_pro_user_${effectiveUserId}`;
+    localStorage.setItem(userProKey, 'true');
 
-    // Agar tizimga kirgan bo'lsa Supabase metadatasiga saqlash
+    // Supabase auth foydalanuvchisini yangilash
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       await supabase.auth.updateUser({
@@ -65,13 +86,15 @@ export async function activateProStatus(userId?: string, referenceCode?: string)
           is_pro: true,
           pro_activated_at: new Date().toISOString(),
           payment_ref: referenceCode || 'MANUAL_ACTIVATION',
+          payment_method: paymentMethod || 'click',
         },
       });
     }
+
     return true;
   } catch (err) {
     console.error('PRO aktivlashtirishda xatolik:', err);
-    return true; // LocalStorage da baribir saqlanadi
+    return true;
   }
 }
 
@@ -82,7 +105,6 @@ export async function syncProjectsToCloud(userId: string, projects: ProjectData[
   if (!userId || !projects || projects.length === 0) return false;
 
   try {
-    // Supabase da projects jadvali bo'lsa saqlaydi
     const payload = projects.map((p) => ({
       id: p.id,
       user_id: userId,
@@ -97,8 +119,7 @@ export async function syncProjectsToCloud(userId: string, projects: ProjectData[
 
     const { error } = await supabase.from('projects').upsert(payload, { onConflict: 'id' });
     if (error) {
-      // Agar jadval hali mavjud bo'lmasa, ogohlantirish beriladi lekin dastur to'xtamaydi
-      console.warn('Supabase projects jadvaliga yozishda eslatma (offline fallback ishlaydi):', error.message);
+      console.warn('Supabase projects jadvaliga yozishda ogohlantirish:', error.message);
       return false;
     }
     return true;

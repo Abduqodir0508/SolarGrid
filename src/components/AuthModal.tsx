@@ -63,6 +63,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           options: {
             data: {
               full_name: fullName.trim() || 'Foydalanuvchi',
+              is_pro: false,
             },
           },
         });
