@@ -26,6 +26,7 @@ interface HeaderProps {
   onOpenProjects: () => void;
   onOpenPricing: () => void;
   onOpenAuth: () => void;
+  onOpenProfileSettings?: () => void;
   onOpenSmartLayout: () => void;
   onOpenRoofConfig: () => void;
   onOpenEstimate: () => void;
@@ -47,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProjects,
   onOpenPricing,
   onOpenAuth,
+  onOpenProfileSettings,
   onOpenSmartLayout,
   onOpenRoofConfig,
   onOpenEstimate,
@@ -246,19 +248,40 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Smeta</span>
           </button>
 
-          {/* Foydalanuvchi / Kirish tugmasi */}
-          <button
-            type="button"
-            onClick={onOpenAuth}
-            className={`p-1.5 rounded-xl border transition-all flex items-center justify-center ${
-              currentUser
-                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                : 'bg-cream-100 hover:bg-cream-200 text-navy-800 border-cream-300'
-            }`}
-            title={currentUser ? `${currentUser.email} (Profil)` : 'Kirish yoki Ro\'yxatdan o\'tish'}
-          >
-            <User className="w-4 h-4" />
-          </button>
+          {/* Foydalanuvchi / Profil tugmasi */}
+          {currentUser ? (
+            <button
+              type="button"
+              onClick={onOpenProfileSettings || onOpenAuth}
+              className="p-1 sm:px-2 sm:py-1 rounded-xl border border-amber-300 hover:border-amber-400 bg-amber-50 hover:bg-amber-100 transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
+              title={`${currentUser.user_metadata?.full_name || currentUser.email} (Profil sozlamalari)`}
+            >
+              {currentUser.user_metadata?.avatar_url ? (
+                <img
+                  src={currentUser.user_metadata.avatar_url}
+                  alt="Avatar"
+                  className="w-6 h-6 rounded-lg object-cover border border-amber-400"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-400 text-navy-950 font-black text-[10px] flex items-center justify-center shadow-xs">
+                  {(currentUser.user_metadata?.full_name || currentUser.email || 'U').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <span className="text-xs font-bold text-navy-900 hidden sm:inline truncate max-w-[90px]">
+                {currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0]}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenAuth}
+              className="px-2.5 py-1.5 rounded-xl border border-cream-300 hover:border-amber-400 bg-cream-100 hover:bg-cream-200 text-navy-900 transition-all flex items-center gap-1.5 text-xs font-bold active:scale-95 shadow-xs"
+              title="Kirish yoki Ro'yxatdan o'tish"
+            >
+              <User className="w-4 h-4 text-navy-700" />
+              <span>Kirish</span>
+            </button>
+          )}
         </div>
 
       </div>

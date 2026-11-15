@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, saveStoredUserSession, clearStoredUserSession } from '@/lib/supabase';
 import {
   X,
   User,
@@ -14,6 +14,7 @@ import {
   Crown,
   LogOut,
   Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -23,6 +24,7 @@ interface AuthModalProps {
   onAuthSuccess: (user: any) => void;
   onOpenPricing: () => void;
   isPro: boolean;
+  notice?: string | null;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -32,6 +34,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onAuthSuccess,
   onOpenPricing,
   isPro,
+  notice,
 }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -71,9 +74,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (error) {
           setErrorMsg(error.message);
         } else if (data.user) {
+          saveStoredUserSession(data.user);
           setSuccessMsg('Muvaffaqiyatli ro\'yxatdan o\'tdingiz!');
           onAuthSuccess(data.user);
-          setTimeout(() => onClose(), 1200);
+          setTimeout(() => onClose(), 1000);
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -88,9 +92,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             setErrorMsg(error.message);
           }
         } else if (data.user) {
+          saveStoredUserSession(data.user);
           setSuccessMsg('Xush kelibsiz! Tizimga muvaffaqiyatli kirdingiz.');
           onAuthSuccess(data.user);
-          setTimeout(() => onClose(), 1000);
+          setTimeout(() => onClose(), 800);
         }
       }
     } catch (err: any) {
@@ -103,6 +108,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSignOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
+    clearStoredUserSession();
     onAuthSuccess(null);
     setLoading(false);
     onClose();
@@ -185,6 +191,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         ) : (
           /* Login yoki Register formasi */
           <div>
+            {/* Guard ogohlantirishi (agar mavjud bo'lsa) */}
+            {notice && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold rounded-2xl flex items-center gap-2 animate-in fade-in">
+                <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>{notice}</span>
+              </div>
+            )}
+
             <div className="text-center mb-5">
               <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2 border border-amber-200">
                 {mode === 'signin' ? <LogIn className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />}
@@ -209,7 +223,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   mode === 'signin' ? 'bg-white text-navy-950 shadow-sm' : 'text-gray-500 hover:text-navy-900'
                 }`}
               >
-                Kirish
+                Kirish (Sign In)
               </button>
               <button
                 type="button"
@@ -221,19 +235,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   mode === 'signup' ? 'bg-white text-navy-950 shadow-sm' : 'text-gray-500 hover:text-navy-900'
                 }`}
               >
-                Ro'yxatdan o'tish
+                Ro'yxatdan o'tish (Sign Up)
               </button>
             </div>
 
             {errorMsg && (
-              <div className="mb-3 p-2.5 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 flex items-center gap-1.5">
+              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 flex items-center gap-2 mb-4 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             {successMsg && (
-              <div className="mb-3 p-2.5 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 flex items-center gap-1.5">
+              <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-300 flex items-center gap-2 mb-4 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
                 <span>{successMsg}</span>
               </div>
@@ -242,53 +256,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-3">
               {mode === 'signup' && (
                 <div>
-                  <label className="text-[11px] font-bold text-navy-700 block mb-1">
+                  <label className="text-xs font-semibold text-navy-800 block mb-1">
                     Ism va familiyangiz:
                   </label>
                   <div className="relative">
                     <User className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
                     <input
                       type="text"
-                      required
-                      placeholder="Masalan: Sardor Rustamov"
+                      placeholder="Alisher Usmonov"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-cream-50/50"
+                      className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                      required
                     />
                   </div>
                 </div>
               )}
 
               <div>
-                <label className="text-[11px] font-bold text-navy-700 block mb-1">
-                  Email manzilingiz:
+                <label className="text-xs font-semibold text-navy-800 block mb-1">
+                  Elektron pochta (Email):
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
                   <input
                     type="email"
-                    required
-                    placeholder="usta@solargrid.uz"
+                    placeholder="misol@gmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-cream-50/50"
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                    required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-navy-700 block mb-1">
-                  Parol (kamida 6 ta belgi):
+                <label className="text-xs font-semibold text-navy-800 block mb-1">
+                  Parol:
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
                   <input
                     type="password"
-                    required
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-cream-50/50"
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                    required
                   />
                 </div>
               </div>
@@ -296,25 +310,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50 mt-2"
+                className="w-full py-2.5 bg-navy-900 hover:bg-navy-800 text-white font-bold rounded-xl text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 mt-4"
               >
-                {loading
-                  ? 'Kutilmoqda...'
-                  : mode === 'signin'
-                  ? 'Kirish'
-                  : 'Ro\'yxatdan o\'tish'}
+                {loading ? (
+                  <span>Kutilmoqda...</span>
+                ) : mode === 'signin' ? (
+                  <>
+                    <LogIn className="w-4 h-4 text-amber-400" />
+                    <span>Tizimga Kirish</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4 text-amber-400" />
+                    <span>Hisob Yaratish</span>
+                  </>
+                )}
               </button>
             </form>
-
-            <div className="mt-4 pt-3 border-t border-cream-200 text-center">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-xs text-gray-500 hover:text-navy-900"
-              >
-                Mehmon sifatida davom etish (Offline)
-              </button>
-            </div>
           </div>
         )}
 

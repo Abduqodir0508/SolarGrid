@@ -26,6 +26,9 @@ import {
   getUserProStatus,
   syncProjectsToCloud,
   fetchProjectsFromCloud,
+  getStoredUserSession,
+  saveStoredUserSession,
+  clearStoredUserSession,
 } from '@/lib/supabase';
 import { calculateProjectMetrics } from '@/utils/solarCalc';
 import { sanitizeText } from '@/utils/sanitize';
@@ -41,12 +44,15 @@ import { EstimateModal } from '@/components/EstimateModal';
 import { ProjectsManagerModal } from '@/components/ProjectsManagerModal';
 import { PricingModal } from '@/components/PricingModal';
 import { AuthModal } from '@/components/AuthModal';
+import { ProfileSettingsModal } from '@/components/ProfileSettingsModal';
 
 export default function SolarGridApp() {
-  // 1. Supabase Auth va PRO holatlari
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  // 1. Supabase Auth va PRO holatlari (Sessiyani F5 / Refresh da zudlik bilan tiklash)
+  const [currentUser, setCurrentUser] = useState<any>(() => getStoredUserSession());
   const [isPro, setIsPro] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalNotice, setAuthModalNotice] = useState<string | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
 
   // 2. Ko'p loyihali tizim holatlari
@@ -77,14 +83,23 @@ export default function SolarGridApp() {
   const [isEstimateOpen, setIsEstimateOpen] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
-  // 4. Supabase seansini yuklash va kuzatish
+  // 4. Supabase seansini yuklash va kuzatish (Cookie & JWT session)
   useEffect(() => {
+    // A) Dastlab keshdagi foydalanuvchini tiklash (F5 / Refresh uchun)
+    const cachedUser = getStoredUserSession();
+    if (cachedUser?.id) {
+      setCurrentUser(cachedUser);
+      getUserProStatus(cachedUser.id).then(setIsPro);
+    }
+
+    // B) Supabase server sessiyasini sinxronlash
     supabase.auth.getSession().then(({ data: { session } }) => {
       const user = session?.user || null;
       setCurrentUser(user);
-      getUserProStatus(user?.id).then(setIsPro);
+      saveStoredUserSession(user);
 
       if (user) {
+        getUserProStatus(user.id).then(setIsPro);
         // Bulutdan loyihalarni sinxronlash
         fetchProjectsFromCloud(user.id).then((cloudProjects) => {
           if (cloudProjects && cloudProjects.length > 0) {
@@ -93,6 +108,8 @@ export default function SolarGridApp() {
             setActiveProjectIdState(cloudProjects[0].id);
           }
         });
+      } else {
+        setIsPro(false);
       }
     });
 
@@ -101,6 +118,8 @@ export default function SolarGridApp() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const user = session?.user || null;
       setCurrentUser(user);
+      saveStoredUserSession(user);
+
       if (user) {
         getUserProStatus(user.id).then(setIsPro);
       } else {
@@ -362,6 +381,49 @@ export default function SolarGridApp() {
     }
   };
 
+  // --- AUTH HIMOYASI (GUARDS) VA PROFIL BOSHQARUVI ---
+
+  // Guard: Akkauntga kirmasdan turib PRO sotib ololmaydi
+  const handleOpenPricing = () => {
+    if (!currentUser) {
+      setAuthModalNotice('PRO tarifni faollashtirish uchun avval tizimga kiring yoki ro\'yxatdan o\'ting!');
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setAuthModalNotice(null);
+    setIsPricingModalOpen(true);
+  };
+
+  // Guard: Akkauntga kirmasdan turib loyihalar papkasini ocholmaydi
+  const handleOpenProjects = () => {
+    if (!currentUser) {
+      setAuthModalNotice('Loyihalaringizni xavfsiz saqlash va papkalar yaratish uchun avval tizimga kiring!');
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setAuthModalNotice(null);
+    setIsProjectsModalOpen(true);
+  };
+
+  // Akkauntdan xavfsiz chiqish
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    clearStoredUserSession();
+    setCurrentUser(null);
+    setIsPro(false);
+    setIsProfileModalOpen(false);
+    setIsAuthModalOpen(false);
+  };
+
+  // Profil sozlamalari yangilanganda
+  const handleUpdateUser = (updatedUser: any) => {
+    setCurrentUser(updatedUser);
+    saveStoredUserSession(updatedUser);
+    if (updatedUser?.id) {
+      getUserProStatus(updatedUser.id).then(setIsPro);
+    }
+  };
+
   const metrics = calculateProjectMetrics(
     currentProject.roof,
     currentProject.panels,
@@ -377,12 +439,16 @@ export default function SolarGridApp() {
         onViewModeChange={setViewMode}
         projectName={currentProject.projectName}
         onProjectNameChange={handleProjectNameChange}
-        onOpenProjects={() => setIsProjectsModalOpen(true)}
-        onOpenPricing={() => setIsPricingModalOpen(true)}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenProjects={handleOpenProjects}
+        onOpenPricing={handleOpenPricing}
+        onOpenAuth={() => {
+          setAuthModalNotice(null);
+          setIsAuthModalOpen(true);
+        }}
+        onOpenProfileSettings={() => setIsProfileModalOpen(true)}
         onOpenSmartLayout={() => {
           if (!isPro) {
-            setIsPricingModalOpen(true);
+            handleOpenPricing();
           } else {
             setIsSmartLayoutOpen(true);
           }
@@ -457,23 +523,44 @@ export default function SolarGridApp() {
         isPro={isPro}
         onProActivated={() => setIsPro(true)}
         userId={currentUser?.id}
+        currentUser={currentUser}
+        onOpenAuth={() => {
+          setAuthModalNotice('PRO tarifni faollashtirish uchun avval tizimga kiring!');
+          setIsAuthModalOpen(true);
+        }}
       />
 
       {/* 6. Registratsiya va Login Modali (Supabase Auth) */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          setAuthModalNotice(null);
+        }}
         currentUser={currentUser}
         onAuthSuccess={(user) => {
           setCurrentUser(user);
+          saveStoredUserSession(user);
           if (user) {
             getUserProStatus(user.id).then(setIsPro);
           } else {
             setIsPro(false);
           }
         }}
-        onOpenPricing={() => setIsPricingModalOpen(true)}
+        onOpenPricing={handleOpenPricing}
         isPro={isPro}
+        notice={authModalNotice}
+      />
+
+      {/* 7. Profil Sozlamalari Modali (Ism, Avatar, Chiqish) */}
+      <ProfileSettingsModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        isPro={isPro}
+        onUpdateUser={handleUpdateUser}
+        onSignOut={handleSignOut}
+        onOpenPricing={handleOpenPricing}
       />
 
       {/* 7. Tom Sozlamalari Modali */}

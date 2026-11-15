@@ -28,6 +28,8 @@ interface PricingModalProps {
   isPro: boolean;
   onProActivated: () => void;
   userId?: string;
+  currentUser?: any;
+  onOpenAuth?: () => void;
 }
 
 export const PricingModal: React.FC<PricingModalProps> = ({
@@ -36,6 +38,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   isPro,
   onProActivated,
   userId,
+  currentUser,
+  onOpenAuth,
 }) => {
   // To'lov provayderi: 'uzcard' | 'click' | 'payme'
   const [paymentMethod, setPaymentMethod] = useState<'uzcard' | 'click' | 'payme'>('uzcard');
@@ -135,6 +139,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     e.preventDefault();
     setValidationError(null);
 
+    const effectiveUserId = userId || currentUser?.id;
+    if (!effectiveUserId) {
+      setValidationError('PRO tarifni akkauntingizga biriktirish uchun avval tizimga kiring!');
+      onOpenAuth?.();
+      return;
+    }
+
     const cleanCard = userCardNumber.replace(/\s/g, '');
     if (cleanCard.length < 16) {
       setValidationError('Iltimos, 16 xonali to\'liq karta raqamingizni kiriting!');
@@ -159,6 +170,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     e.preventDefault();
     setValidationError(null);
 
+    const effectiveUserId = userId || currentUser?.id;
+    if (!effectiveUserId) {
+      setValidationError('PRO tarifni akkauntingizga biriktirish uchun avval tizimga kiring!');
+      onOpenAuth?.();
+      return;
+    }
+
     if (!otpCode.trim() || otpCode.replace(/\D/g, '').length < 4) {
       setValidationError('Iltimos, telefoningizga yuborilgan 4 xonali SMS kodni kiriting!');
       return;
@@ -171,7 +189,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       const refCode = `UZCARD_ONLINE_${cleanCard.slice(-4)}_${Date.now()}`;
 
       // Tizim kutib o'tirmasdan darhol foydalanuvchini PRO statusiga o'tkazadi
-      await activateProStatus(userId, refCode, paymentMethod);
+      await activateProStatus(effectiveUserId, refCode, paymentMethod);
 
       try {
         confetti({
@@ -203,6 +221,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     e.preventDefault();
     setValidationError(null);
 
+    const effectiveUserId = userId || currentUser?.id;
+    if (!effectiveUserId) {
+      setValidationError('PRO tarifni akkauntingizga biriktirish uchun avval tizimga kiring!');
+      onOpenAuth?.();
+      return;
+    }
+
     if (!receiptFile && !referenceCode.trim()) {
       setValidationError(
         'Iltimos, to\'lov cheki skrinshotini yuklang yoki tranzaksiya (chek) raqamini kiriting!'
@@ -214,7 +239,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
     try {
       const codeOrRef = referenceCode.trim() || `RECEIPT_${receiptFile?.name || 'IMG'}_${Date.now()}`;
-      await activateProStatus(userId, codeOrRef, paymentMethod);
+      await activateProStatus(effectiveUserId, codeOrRef, paymentMethod);
 
       try {
         confetti({
@@ -418,6 +443,26 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 {amountUzs}
               </span>
             </div>
+
+            {/* Foydalanuvchi tizimga kirmagan bo'lsa xavfsizlik ogohlantirishi */}
+            {!userId && !currentUser && (
+              <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-in fade-in">
+                <div className="flex items-center gap-2 text-navy-950 font-bold">
+                  <ShieldCheck className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <span>PRO obunani akkauntingizga bog'lash uchun avval tizimga kiring.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenAuth?.();
+                  }}
+                  className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white font-bold rounded-xl text-xs whitespace-nowrap shadow-sm active:scale-95 transition-all"
+                >
+                  Tizimga Kirish
+                </button>
+              </div>
+            )}
 
             {/* 3 ta to'lov provayderi tugmalari */}
             <div className="grid grid-cols-3 gap-2">
