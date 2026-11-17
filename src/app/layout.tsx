@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { ThemeProvider } from '@/context/ThemeContext';
 
 export const metadata: Metadata = {
   title: 'SolarGrid — 2D/3D Tom Konstruktori va Quyosh Kalkulyatori',
@@ -20,9 +21,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="uz">
-      <body className="min-h-screen bg-cream-100 text-navy-900 selection:bg-amber-200">
-        {children}
+    <html lang="uz" suppressHydrationWarning>
+      <body className="min-h-screen bg-cream-100 text-navy-900 dark:bg-navy-950 dark:text-cream-100 selection:bg-amber-200 transition-colors">
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

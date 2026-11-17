@@ -431,7 +431,7 @@ export default function SolarGridApp() {
   );
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-cream-100 select-none">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-cream-100 dark:bg-navy-950 text-navy-900 dark:text-cream-100 select-none transition-colors">
       
       {/* 1. Yuqori Header */}
       <Header

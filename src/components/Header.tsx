@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import {
   Sun,
+  Moon,
   Layers,
   Box,
   Wand2,
@@ -17,6 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { sanitizeText } from '@/utils/sanitize';
+import { useTheme } from '@/context/ThemeContext';
 
 interface HeaderProps {
   viewMode: '2d' | '3d';
@@ -61,6 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
   isPro = false,
   currentUser = null,
 }) => {
+  const { theme, toggleTheme } = useTheme();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(projectName);
 
@@ -70,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white/95 backdrop-blur-md border-b border-cream-200 sticky top-0 z-40 px-3 sm:px-6 py-2.5 shadow-sm transition-all">
+    <header className="bg-white/95 dark:bg-navy-950/95 backdrop-blur-md border-b border-cream-200 dark:border-navy-800 sticky top-0 z-40 px-3 sm:px-6 py-2.5 shadow-sm transition-colors">
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-4">
         
         {/* Chap tomon: Logo, PRO nishoni va Loyiha nomi */}
@@ -80,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-extrabold text-base sm:text-lg text-navy-900 tracking-tight flex items-center gap-1.5">
+              <h1 className="font-extrabold text-base sm:text-lg text-navy-900 dark:text-white tracking-tight flex items-center gap-1.5">
                 SolarGrid
               </h1>
 
@@ -91,27 +94,27 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`flex items-center gap-1 text-[10px] uppercase font-black px-2 py-0.5 rounded-full border shadow-xs transition-all active:scale-95 ${
                   isPro
                     ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-navy-950 border-amber-500 shadow-amber-500/20'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                    : 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700/60'
                 }`}
                 title="Tariflar va PRO imkoniyatlarni ko'rish"
               >
-                <Crown className={`w-3 h-3 ${isPro ? 'fill-navy-950 text-navy-950' : 'text-amber-700'}`} />
+                <Crown className={`w-3 h-3 ${isPro ? 'fill-navy-950 text-navy-950' : 'text-amber-700 dark:text-amber-400'}`} />
                 <span>{isPro ? 'PRO AKTIV' : 'PRO'}</span>
               </button>
 
               {/* Papkalar / Loyihalarim tugmasi */}
               <button
                 onClick={onOpenProjects}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold text-navy-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all shadow-xs"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold text-navy-800 dark:text-cream-100 bg-amber-50 hover:bg-amber-100 dark:bg-navy-800 dark:hover:bg-navy-700 border border-amber-300 dark:border-navy-600 transition-all shadow-xs"
                 title="Barcha saqlangan loyihalar va papkalar"
               >
-                <FolderOpen className="w-3.5 h-3.5 text-amber-600" />
+                <FolderOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span>Papkalar</span>
               </button>
             </div>
             
             {/* Loyiha nomi (tahrirlanadigan) */}
-            <div className="flex items-center gap-1.5 text-xs text-navy-700">
+            <div className="flex items-center gap-1.5 text-xs text-navy-700 dark:text-cream-300">
               {isEditingName ? (
                 <div className="flex items-center gap-1">
                   <input
@@ -122,11 +125,11 @@ export const Header: React.FC<HeaderProps> = ({
                     onBlur={handleNameSubmit}
                     autoFocus
                     maxLength={50}
-                    className="px-1.5 py-0.5 text-xs border border-amber-400 rounded outline-none focus:ring-1 focus:ring-amber-500 bg-amber-50/50 font-bold"
+                    className="px-1.5 py-0.5 text-xs border border-amber-400 rounded outline-none focus:ring-1 focus:ring-amber-500 bg-amber-50/50 dark:bg-navy-800 dark:text-white font-bold"
                   />
                   <button
                     onClick={handleNameSubmit}
-                    className="p-0.5 text-emerald-600 hover:text-emerald-700"
+                    className="p-0.5 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700"
                     title="Saqlash"
                   >
                     <Check className="w-3.5 h-3.5" />
@@ -138,7 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
                     setTempName(projectName);
                     setIsEditingName(true);
                   }}
-                  className="hover:underline flex items-center gap-1 font-bold text-navy-900 truncate max-w-[160px] sm:max-w-[240px]"
+                  className="hover:underline flex items-center gap-1 font-bold text-navy-900 dark:text-white truncate max-w-[160px] sm:max-w-[240px]"
                   title="Nomini o'zgartirish uchun bosing"
                 >
                   <span className="truncate">{projectName}</span>
@@ -146,13 +149,13 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              <span className="text-gray-300">|</span>
-              <span className="font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap">
+              <span className="text-gray-300 dark:text-navy-700">|</span>
+              <span className="font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap border border-amber-200/50 dark:border-amber-800/40">
                 {panelsCount} ta panel ({totalCapacityKw} kVt)
               </span>
 
               {isSaved && (
-                <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800/40">
                   <Check className="w-2.5 h-2.5" />
                   Saqlangan
                 </span>
@@ -162,67 +165,82 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* O'rta: 2D va 3D o'tkazgich */}
-        <div className="flex items-center bg-cream-200/80 p-1 rounded-xl border border-cream-300">
+        <div className="flex items-center bg-cream-200/80 dark:bg-navy-900 p-1 rounded-xl border border-cream-300 dark:border-navy-700">
           <button
             onClick={() => onViewModeChange('2d')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               viewMode === '2d'
-                ? 'bg-white text-navy-900 shadow-sm border border-cream-200'
-                : 'text-navy-700 hover:text-navy-900'
+                ? 'bg-white dark:bg-navy-800 text-navy-900 dark:text-white shadow-sm border border-cream-200 dark:border-navy-700'
+                : 'text-navy-700 dark:text-cream-300 hover:text-navy-900 dark:hover:text-white'
             }`}
           >
-            <Layers className="w-4 h-4 text-navy-800" />
+            <Layers className="w-4 h-4 text-navy-800 dark:text-cream-200" />
             <span>2D Chizma</span>
           </button>
           <button
             onClick={() => onViewModeChange('3d')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               viewMode === '3d'
-                ? 'bg-navy-900 text-white shadow-sm'
-                : 'text-navy-700 hover:text-navy-900'
+                ? 'bg-navy-900 dark:bg-amber-500 text-white dark:text-navy-950 shadow-sm'
+                : 'text-navy-700 dark:text-cream-300 hover:text-navy-900 dark:hover:text-white'
             }`}
           >
-            <Box className="w-4 h-4 text-amber-400" />
+            <Box className="w-4 h-4 text-amber-400 dark:text-navy-950" />
             <span>3D Simulyatsiya</span>
           </button>
         </div>
 
-        {/* O'ng tomon: Harakat tugmalari va Auth */}
+        {/* O'ng tomon: Dark/Light Mode, Harakat tugmalari va Auth */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* DARK / LIGHT MODE TUGMASI */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-2 rounded-xl text-navy-800 dark:text-amber-400 bg-cream-100 hover:bg-cream-200 dark:bg-navy-800 dark:hover:bg-navy-700 border border-cream-300 dark:border-navy-700 transition-all shadow-xs active:scale-95"
+            title={theme === 'dark' ? "Yorug' rejimga o'tish (Light Mode)" : "Qorong'i rejimga o'tish (Dark Mode)"}
+            aria-label="Mavzuni o'zgartirish"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-navy-800" />
+            )}
+          </button>
+
           {/* Tom sozlamalari */}
           <button
             onClick={onOpenRoofConfig}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-navy-800 bg-cream-100 hover:bg-cream-200 border border-cream-300 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-navy-800 dark:text-cream-100 bg-cream-100 hover:bg-cream-200 dark:bg-navy-800 dark:hover:bg-navy-700 border border-cream-300 dark:border-navy-700 transition-colors"
             title="Tom o'lchami va kompas yo'nalishi"
           >
-            <Sliders className="w-4 h-4 text-navy-700" />
+            <Sliders className="w-4 h-4 text-navy-700 dark:text-cream-300" />
             <span className="hidden md:inline">Tom</span>
           </button>
 
           {/* AI Optimal Joylashtirish */}
           <button
             onClick={onOpenSmartLayout}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-purple-900 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800/40 transition-colors shadow-sm"
             title="AI yordamida panellarni avtomatik simmetrik terish"
           >
-            <Wand2 className="w-4 h-4 text-purple-600" />
+            <Wand2 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             <span className="hidden sm:inline">AI Terish</span>
           </button>
 
           {/* Ulashish (Link nusxalash) */}
           <button
             onClick={onShare}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-navy-800 bg-cream-100 hover:bg-cream-200 border border-cream-300 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-navy-800 dark:text-cream-100 bg-cream-100 hover:bg-cream-200 dark:bg-navy-800 dark:hover:bg-navy-700 border border-cream-300 dark:border-navy-700 transition-colors"
             title="Loyihani link orqali ulashish"
           >
             {isCopied ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-emerald-700 font-semibold">Nusxalandi!</span>
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Nusxalandi!</span>
               </>
             ) : (
               <>
-                <Share2 className="w-3.5 h-3.5 text-navy-700" />
+                <Share2 className="w-3.5 h-3.5 text-navy-700 dark:text-cream-300" />
                 <span className="hidden sm:inline">Ulashish</span>
               </>
             )}
@@ -232,7 +250,7 @@ export const Header: React.FC<HeaderProps> = ({
           {panelsCount > 0 && (
             <button
               onClick={onReset}
-              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
               title="Tomdagi panellarni tozalash"
             >
               <RotateCcw className="w-4 h-4" />
@@ -253,7 +271,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenProfileSettings || onOpenAuth}
-              className="p-1 sm:px-2 sm:py-1 rounded-xl border border-amber-300 hover:border-amber-400 bg-amber-50 hover:bg-amber-100 transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
+              className="p-1 sm:px-2 sm:py-1 rounded-xl border border-amber-300 hover:border-amber-400 dark:border-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-navy-800 dark:hover:bg-navy-700 transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
               title={`${currentUser.user_metadata?.full_name || currentUser.email} (Profil sozlamalari)`}
             >
               {currentUser.user_metadata?.avatar_url ? (
@@ -267,7 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {(currentUser.user_metadata?.full_name || currentUser.email || 'U').slice(0, 1).toUpperCase()}
                 </div>
               )}
-              <span className="text-xs font-bold text-navy-900 hidden sm:inline truncate max-w-[90px]">
+              <span className="text-xs font-bold text-navy-900 dark:text-white hidden sm:inline truncate max-w-[90px]">
                 {currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0]}
               </span>
             </button>
@@ -275,10 +293,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAuth}
-              className="px-2.5 py-1.5 rounded-xl border border-cream-300 hover:border-amber-400 bg-cream-100 hover:bg-cream-200 text-navy-900 transition-all flex items-center gap-1.5 text-xs font-bold active:scale-95 shadow-xs"
+              className="px-2.5 py-1.5 rounded-xl border border-cream-300 dark:border-navy-700 hover:border-amber-400 bg-cream-100 hover:bg-cream-200 dark:bg-navy-800 dark:hover:bg-navy-700 text-navy-900 dark:text-white transition-all flex items-center gap-1.5 text-xs font-bold active:scale-95 shadow-xs"
               title="Kirish yoki Ro'yxatdan o'tish"
             >
-              <User className="w-4 h-4 text-navy-700" />
+              <User className="w-4 h-4 text-navy-700 dark:text-cream-300" />
               <span>Kirish</span>
             </button>
           )}

@@ -15,6 +15,7 @@ import {
   LogOut,
   Sparkles,
   ShieldAlert,
+  Loader2,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -52,6 +53,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setSuccessMsg(null);
     setLoading(true);
 
+    const cleanEmail = email.trim().toLowerCase();
+
     try {
       if (mode === 'signup') {
         if (password.length < 6) {
@@ -60,46 +63,96 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           return;
         }
 
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim() || 'Foydalanuvchi',
-              is_pro: false,
-            },
-          },
+        // Server orqali auto-confirm qilib foydalanuvchi yaratish
+        const regRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            fullName: fullName.trim() || 'Foydalanuvchi',
+          }),
         });
 
-        if (error) {
-          setErrorMsg(error.message);
-        } else if (data.user) {
-          saveStoredUserSession(data.user);
-          setSuccessMsg('Muvaffaqiyatli ro\'yxatdan o\'tdingiz!');
-          onAuthSuccess(data.user);
-          setTimeout(() => onClose(), 1000);
+        const regData = await regRes.json();
+
+        if (!regRes.ok) {
+          if (regData.alreadyExists) {
+            setErrorMsg(regData.error);
+            setMode('signin');
+            setLoading(false);
+            return;
+          }
+          throw new Error(regData.error || 'Ro\'yxatdan o\'tishda xatolik yuz berdi');
+        }
+
+        // Auto-login (Registratsiyadan so'ng darhol tizimga kirish)
+        const { data: signinData, error: signinError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+
+        if (signinError) {
+          // Agar kutilmaganda signin da xatolik bo'lsa
+          throw signinError;
+        }
+
+        if (signinData.user) {
+          saveStoredUserSession(signinData.user);
+          setSuccessMsg('Muvaffaqiyatli ro\'yxatdan o\'tdingiz! Xush kelibsiz.');
+          onAuthSuccess(signinData.user);
+          setTimeout(() => {
+            onClose();
+          }, 800);
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+        // Tizimga kirish (Login)
+        let { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
           password,
         });
 
+        // Agar "Email not confirmed" xatoligi bo'lsa, server orqali darhol tasdiqlab qayta kiramiz
+        if (error && error.message.toLowerCase().includes('email not confirmed')) {
+          try {
+            await fetch('/api/auth/confirm-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: cleanEmail }),
+            });
+
+            // Qaytadan kirishga urinish
+            const retry = await supabase.auth.signInWithPassword({
+              email: cleanEmail,
+              password,
+            });
+            data = retry.data;
+            error = retry.error;
+          } catch (confirmErr) {
+            console.warn('Avto-tasdiqlashda xato:', confirmErr);
+          }
+        }
+
         if (error) {
-          if (error.message.includes('Invalid login credentials')) {
+          if (
+            error.message.includes('Invalid login credentials') ||
+            error.message.includes('invalid_grant')
+          ) {
             setErrorMsg('Email yoki parol noto\'g\'ri kiritildi');
           } else {
             setErrorMsg(error.message);
           }
-        } else if (data.user) {
+        } else if (data?.user) {
           saveStoredUserSession(data.user);
           setSuccessMsg('Xush kelibsiz! Tizimga muvaffaqiyatli kirdingiz.');
           onAuthSuccess(data.user);
-          setTimeout(() => onClose(), 800);
+          setTimeout(() => {
+            onClose();
+          }, 800);
         }
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Xatolik yuz berdi');
+      setErrorMsg(err.message || 'Xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
     } finally {
       setLoading(false);
     }
@@ -116,12 +169,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-navy-950/70 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-cream-200 relative">
+      <div className="bg-white dark:bg-navy-900 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-cream-200 dark:border-navy-700 relative text-navy-900 dark:text-cream-100 transition-colors">
         
         {/* Yopish tugmasi */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 text-gray-400 hover:text-navy-900 rounded-xl hover:bg-cream-100 transition-colors"
+          className="absolute top-5 right-5 p-1.5 text-gray-400 hover:text-navy-900 dark:hover:text-white rounded-xl hover:bg-cream-100 dark:hover:bg-navy-800 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -134,121 +187,114 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
 
             <div>
-              <h2 className="text-lg font-black text-navy-950">
+              <h2 className="text-lg font-black text-navy-950 dark:text-white">
                 {currentUser.user_metadata?.full_name || 'Foydalanuvchi'}
               </h2>
-              <p className="text-xs text-navy-600 font-mono mt-0.5">
+              <p className="text-xs text-navy-600 dark:text-cream-300 font-mono mt-0.5">
                 {currentUser.email}
               </p>
             </div>
 
-            {/* Status nishoni */}
-            <div className="p-3 rounded-2xl bg-cream-50 border border-cream-200 flex items-center justify-between">
-              <div className="text-left">
-                <span className="text-[11px] text-gray-500 block">Hisobingiz holati:</span>
-                <span className="text-xs font-bold text-navy-900 flex items-center gap-1">
-                  {isPro ? (
-                    <>
-                      <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                      <strong className="text-amber-600">PRO Tarif (Faol)</strong>
-                    </>
-                  ) : (
-                    <span>Standart (Bepul)</span>
-                  )}
+            {/* PRO Status nishoni */}
+            <div className="p-3 rounded-2xl bg-cream-50 dark:bg-navy-800 border border-cream-200 dark:border-navy-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Crown className={`w-5 h-5 ${isPro ? 'text-amber-500 fill-amber-500' : 'text-gray-400'}`} />
+                <span className="text-xs font-bold text-navy-900 dark:text-white">
+                  {isPro ? 'PRO Tarif Faol' : 'Standart Tarif (Tekin)'}
                 </span>
               </div>
-
-              {!isPro ? (
+              {!isPro && (
                 <button
                   onClick={() => {
                     onClose();
                     onOpenPricing();
                   }}
-                  className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-navy-950 text-xs font-extrabold rounded-xl shadow-md active:scale-95 transition-all flex items-center gap-1"
+                  className="px-2.5 py-1 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-navy-950 rounded-lg flex items-center gap-1 active:scale-95 transition-all"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Sparkles className="w-3 h-3" />
                   <span>PRO ga O'tish</span>
                 </button>
-              ) : (
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                  Cheksiz imkoniyat
-                </span>
               )}
             </div>
 
-            <div className="pt-2 flex items-center gap-2">
+            <div className="pt-2 flex gap-2">
               <button
-                type="button"
                 onClick={handleSignOut}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-cream-100 hover:bg-red-50 text-navy-800 hover:text-red-600 rounded-xl text-xs font-bold transition-all border border-cream-300"
+                className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 border border-red-200"
               >
                 <LogOut className="w-4 h-4" />
-                <span>Hisobdan chiqish</span>
+                <span>Akkauntdan Chiqish</span>
               </button>
             </div>
           </div>
         ) : (
-          /* Login yoki Register formasi */
+          /* Kirish yoki Ro'yxatdan o'tish formasi */
           <div>
-            {/* Guard ogohlantirishi (agar mavjud bo'lsa) */}
             {notice && (
-              <div className="mb-4 p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold rounded-2xl flex items-center gap-2 animate-in fade-in">
-                <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-700/50 rounded-2xl flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>{notice}</span>
               </div>
             )}
 
             <div className="text-center mb-5">
-              <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2 border border-amber-200">
-                {mode === 'signin' ? <LogIn className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />}
-              </div>
-              <h2 className="text-lg font-black text-navy-950">
-                {mode === 'signin' ? 'SolarGrid Tizimiga Kirish' : 'Yangi Hisob Ochish'}
+              <h2 className="text-xl font-black text-navy-950 dark:text-white">
+                {mode === 'signin' ? 'Tizimga Kirish' : 'Ro\'yxatdan O\'tish'}
               </h2>
-              <p className="text-xs text-navy-600 mt-0.5">
-                Loyihalaringizni bulutda saqlang va PRO tarifdan foydalaning
+              <p className="text-xs text-navy-600 dark:text-cream-300 mt-1">
+                {mode === 'signin'
+                  ? 'SolarGrid loyihalaringizni boshqarish uchun profilingizga kiring'
+                  : 'Yangi hisob yarating va loyihalaringizni xavfsiz saqlang'}
               </p>
             </div>
 
-            {/* Sign in / Sign up tab */}
-            <div className="flex bg-cream-100 p-1 rounded-xl mb-4 text-xs font-bold">
+            {/* Rejimni o'zgartirish (Tab) */}
+            <div className="flex bg-cream-100 dark:bg-navy-800 p-1 rounded-2xl mb-4 border border-cream-200 dark:border-navy-700">
               <button
                 type="button"
                 onClick={() => {
                   setMode('signin');
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
-                className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  mode === 'signin' ? 'bg-white text-navy-950 shadow-sm' : 'text-gray-500 hover:text-navy-900'
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                  mode === 'signin'
+                    ? 'bg-white dark:bg-navy-900 text-navy-950 dark:text-white shadow-xs'
+                    : 'text-gray-500 hover:text-navy-900 dark:hover:text-white'
                 }`}
               >
-                Kirish (Sign In)
+                Kirish
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setMode('signup');
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
-                className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  mode === 'signup' ? 'bg-white text-navy-950 shadow-sm' : 'text-gray-500 hover:text-navy-900'
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                  mode === 'signup'
+                    ? 'bg-white dark:bg-navy-900 text-navy-950 dark:text-white shadow-xs'
+                    : 'text-gray-500 hover:text-navy-900 dark:hover:text-white'
                 }`}
               >
-                Ro'yxatdan o'tish (Sign Up)
+                Ro'yxatdan O'tish
               </button>
             </div>
 
+            {/* Xatolik xabari */}
             {errorMsg && (
-              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 flex items-center gap-2 mb-4 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <div className="mb-4 p-2.5 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs rounded-xl border border-red-200 dark:border-red-800/50 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
+            {/* Muvaffaqiyat xabari */}
             {successMsg && (
-              <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-300 flex items-center gap-2 mb-4 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+              <div className="mb-4 p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-xs rounded-xl border border-emerald-300 dark:border-emerald-800/50 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{successMsg}</span>
               </div>
             )}
@@ -256,53 +302,54 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-3">
               {mode === 'signup' && (
                 <div>
-                  <label className="text-xs font-semibold text-navy-800 block mb-1">
-                    Ism va familiyangiz:
+                  <label className="block text-xs font-bold text-navy-800 dark:text-cream-200 mb-1">
+                    To'liq ismingiz
                   </label>
                   <div className="relative">
                     <User className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Alisher Usmonov"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                      placeholder="Masalan: Sardor Rahimov"
                       required
+                      className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 dark:border-navy-700 dark:bg-navy-800 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:text-white"
                     />
                   </div>
                 </div>
               )}
 
               <div>
-                <label className="text-xs font-semibold text-navy-800 block mb-1">
-                  Elektron pochta (Email):
+                <label className="block text-xs font-bold text-navy-800 dark:text-cream-200 mb-1">
+                  Elektron pochta (Email)
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
                   <input
                     type="email"
-                    placeholder="misol@gmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                    placeholder="ism@kompaniya.uz"
                     required
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 dark:border-navy-700 dark:bg-navy-800 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:text-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-navy-800 block mb-1">
-                  Parol:
+                <label className="block text-xs font-bold text-navy-800 dark:text-cream-200 mb-1">
+                  Parol
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
                   <input
                     type="password"
-                    placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                    placeholder="••••••••"
                     required
+                    minLength={6}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-cream-300 dark:border-navy-700 dark:bg-navy-800 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:text-white"
                   />
                 </div>
               </div>
@@ -310,19 +357,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 bg-navy-900 hover:bg-navy-800 text-white font-bold rounded-xl text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 mt-4"
+                className="w-full py-2.5 bg-navy-900 hover:bg-navy-800 dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-navy-950 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
               >
                 {loading ? (
-                  <span>Kutilmoqda...</span>
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Yuklanmoqda...</span>
+                  </>
                 ) : mode === 'signin' ? (
                   <>
-                    <LogIn className="w-4 h-4 text-amber-400" />
-                    <span>Tizimga Kirish</span>
+                    <LogIn className="w-4 h-4" />
+                    <span>Akkauntga Kirish</span>
                   </>
                 ) : (
                   <>
-                    <UserPlus className="w-4 h-4 text-amber-400" />
-                    <span>Hisob Yaratish</span>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Ro'yxatdan O'tish</span>
                   </>
                 )}
               </button>
