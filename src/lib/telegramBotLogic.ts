@@ -1,7 +1,7 @@
 import { supabaseAdmin } from './supabaseAdmin';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-let dynamicAdminChatId: number | string = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
+let dynamicAdminChatId: number | string = process.env.TELEGRAM_ADMIN_CHAT_ID || '2067464475';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Karta va to'lov rekvizitlari
