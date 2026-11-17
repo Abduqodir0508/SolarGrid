@@ -1,7 +1,7 @@
 import { supabaseAdmin } from './supabaseAdmin';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
+let dynamicAdminChatId: number | string = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Karta va to'lov rekvizitlari
@@ -414,6 +414,16 @@ export async function handleTelegramUpdate(update: any) {
         return;
       }
 
+      // /admin komandasi - Ushbu chatni administrator deb belgilash
+      if (text === '/admin' || text === '/setadmin') {
+        dynamicAdminChatId = chatId;
+        await sendMessage(
+          chatId,
+          `👑 <b>Siz SolarGrid administrator sifatida belgilandingiz!</b>\n\nChat ID: <code>${chatId}</code>\nBarcha yangi kelgan to'lov cheklari ushbu chatga tasdiqlash uchun yuboriladi.`
+        );
+        return;
+      }
+
       // Agar rasm (to'lov cheki) yuborilgan bo'lsa
       if (msg.photo && msg.photo.length > 0) {
         const photo = msg.photo[msg.photo.length - 1]; // Eng yuqori sifatli rasm
@@ -426,7 +436,7 @@ export async function handleTelegramUpdate(update: any) {
         await sendMessage(chatId, t.receiptReceived);
 
         // Adminga chekni yuborish
-        const adminChatId = TELEGRAM_ADMIN_CHAT_ID || chatId; // Agar admin ID berilmagan bo'lsa shu chatga
+        const adminChatId = dynamicAdminChatId || chatId; // Agar admin ID berilmagan bo'lsa shu chatga
 
         const adminCaption =
           `🔔 <b>YANGI TO'LOV CHEKI KELDI!</b>\n\n` +
@@ -454,8 +464,8 @@ export async function handleTelegramUpdate(update: any) {
           ],
         };
 
-        if (TELEGRAM_ADMIN_CHAT_ID) {
-          await sendPhoto(TELEGRAM_ADMIN_CHAT_ID, photoFileId, adminCaption, inlineKeyboard);
+        if (dynamicAdminChatId) {
+          await sendPhoto(dynamicAdminChatId, photoFileId, adminCaption, inlineKeyboard);
         } else {
           // Admin chat belgilanmagan bo'lsa test uchun shu chatga yuborish
           await sendPhoto(chatId, photoFileId, `[ADMIN TEST KANALI]\n${adminCaption}`, inlineKeyboard);

@@ -69,7 +69,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   const recipientRawNumber = '5614688714380671';
   const recipientCardHolder = 'M.S (Uzcard)';
   const amountUzs = '49,000 UZS';
-  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'SolarGridUzBot';
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'solargridpro_bot';
 
   // Telegram botga o'tish linki: foydalanuvchi emaili yoki ID si bilan
   const userIdentifier = currentUser?.email || currentUser?.id || userId || '';
