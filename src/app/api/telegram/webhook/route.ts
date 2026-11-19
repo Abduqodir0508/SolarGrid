@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { handleTelegramUpdate } from '@/lib/telegramBotLogic';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const update = await request.json();
-    // Update ni qayta ishlash
     await handleTelegramUpdate(update);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
