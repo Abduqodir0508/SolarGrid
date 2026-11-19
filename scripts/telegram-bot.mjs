@@ -1,6 +1,6 @@
 /**
  * SolarGrid Standalone Telegram Bot Runner
- * Ishga tushirish: node scripts/telegram-bot.mjs
+ * Ishga tushirish: npm run bot
  */
 
 import fs from 'fs';
@@ -34,7 +34,25 @@ const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 export const PAYMENT_CARD = '5614 6887 1438 0671';
 export const PAYMENT_CARD_HOLDER = 'M.S (Uzcard)';
-export const PAYMENT_AMOUNT = '49,000 UZS';
+export const PRICE_FIRST_MONTH = 150000; // 150,000 UZS
+export const PRICE_RENEWAL = 280000;    // 280,000 UZS
+
+function formatUzs(amount) {
+  return Number(amount).toLocaleString('uz-UZ') + " so'm";
+}
+
+function formatDate(isoDate) {
+  try {
+    const d = new Date(isoDate);
+    return d.toLocaleDateString('uz-UZ', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch (e) {
+    return isoDate;
+  }
+}
 
 // Telegram API chaqiruvlari
 async function tgCall(method, payload) {
@@ -102,18 +120,34 @@ async function findUserInSupabase(term) {
 
     const matched = data.users.find(
       (u) =>
-        u.email?.toLowerCase() === cleanTerm ||
         u.id.toLowerCase() === cleanTerm ||
+        u.email?.toLowerCase() === cleanTerm ||
         (cleanTerm.includes('@') && u.email?.toLowerCase().includes(cleanTerm))
     );
 
     if (!matched) return null;
 
+    const metadata = matched.user_metadata || {};
+    const monthsCount = Number(metadata.pro_months_count || 0);
+    const expiresAt = metadata.pro_expires_at || null;
+
+    let isPro = !!metadata.is_pro;
+    if (expiresAt && new Date() > new Date(expiresAt)) {
+      isPro = false;
+    }
+
+    const isFirstTime = monthsCount === 0 && !metadata.pro_activated_at;
+    const calculatedPrice = isFirstTime ? PRICE_FIRST_MONTH : PRICE_RENEWAL;
+
     return {
       id: matched.id,
       email: matched.email || '',
-      fullName: matched.user_metadata?.full_name || 'Foydalanuvchi',
-      isPro: !!matched.user_metadata?.is_pro,
+      fullName: metadata.full_name || 'Foydalanuvchi',
+      isPro,
+      expiresAt,
+      monthsCount,
+      calculatedPrice,
+      isFirstTime,
     };
   } catch (err) {
     console.error('Supabase qidiruv xatosi:', err.message);
@@ -121,13 +155,44 @@ async function findUserInSupabase(term) {
   }
 }
 
-// Supabase da PRO status berish
-async function setProStatusInSupabase(userId, isPro) {
+// Supabase da PRO status berish (+30 kun)
+async function setProStatusInSupabase(userId, isPro, amountPaid) {
   try {
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 kun
+    if (!isPro) {
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_metadata: { is_pro: false },
+        }),
+      });
+      return { success: true, expiresAt: null };
+    }
 
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    // Mavjud ma'lumotlarni olish
+    const getRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+    });
+    const userData = await getRes.json();
+    const existingMeta = userData?.user_metadata || {};
+    const currentMonths = Number(existingMeta.pro_months_count || 0);
+    const currentExpiry = existingMeta.pro_expires_at ? new Date(existingMeta.pro_expires_at) : null;
+
+    let startDate = new Date();
+    let newExpiryDate = new Date();
+    if (currentExpiry && currentExpiry > new Date()) {
+      newExpiryDate = new Date(currentExpiry);
+    }
+    newExpiryDate.setDate(newExpiryDate.getDate() + 30);
+
+    const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
       method: 'PUT',
       headers: {
         apikey: SUPABASE_SERVICE_KEY,
@@ -136,96 +201,128 @@ async function setProStatusInSupabase(userId, isPro) {
       },
       body: JSON.stringify({
         user_metadata: {
-          is_pro: isPro,
-          pro_activated_at: new Date().toISOString(),
-          pro_expires_at: isPro ? expiresAt.toISOString() : null,
+          is_pro: true,
+          pro_started_at: existingMeta.pro_started_at || startDate.toISOString(),
+          pro_activated_at: startDate.toISOString(),
+          pro_expires_at: newExpiryDate.toISOString(),
+          pro_months_count: currentMonths + 1,
+          last_payment_amount: amountPaid || (currentMonths === 0 ? PRICE_FIRST_MONTH : PRICE_RENEWAL),
           payment_verified_via: 'telegram_bot',
+          payment_verified_at: new Date().toISOString(),
         },
       }),
     });
-    return res.ok;
+
+    return { success: updateRes.ok, expiresAt: newExpiryDate.toISOString() };
   } catch (err) {
     console.error('PRO yangilash xatosi:', err.message);
-    return false;
+    return { success: false, expiresAt: null };
   }
 }
 
 // Matnlar
 const TEXTS = {
   uz: {
-    welcome: `☀️ <b>SolarGrid Rasmiy Botiga Xush Kelibsiz!</b>\n\nIltimos, qulay muloqot tilini tanlang:\nПожалуйста, выберите язык:\nPlease select a language:`,
-    langSelected: `🇺🇿 <b>O'zbek tili tanlandi.</b>\n\nSolarGrid PRO versiyasini faollashtirish uchun saytimizdagi akkauntingiz (email yoki ID)ni kiriting:`,
-    enterEmail: `✍️ Iltimos, <b>solargrid.uz</b> saytida ro'yxatdan o'tgan <b>elektron pochtangizni (Email)</b> yozib yuboring:`,
+    welcome: `☀️ <b>SolarGrid Rasmiy Botiga Xush Kelibsiz!</b>\n\nIltimos, muloqot tilini tanlang:\nПожалуйста, выберите язык:\nPlease select a language:`,
+    langSelected: `🇺🇿 <b>O'zbek tili tanlandi.</b>`,
+    enterEmail: `✍️ Iltimos, <b>solargrid.uz</b> saytida ro'yxatdan o'tgan <b>elektron pochtangiz (Email)</b> yoki <b>User ID</b> raqamingizni yuboring:`,
     notFound: (term) =>
-      `⚠️ <b>Bunday akkaunt topilmadi!</b>\n\nSiz kiritgan "<code>${term}</code>" bo'yicha foydalanuvchi mavjud emas.\n\nIltimos, avval <a href="https://solargrid.uz">solargrid.uz</a> saytida ro'yxatdan o'ting, so'ng qayta urinib ko'ring yoki to'g'ri emailni qaytadan yozing.`,
-    confirmAccount: (name, email, isPro) =>
-      `🔍 <b>Akkaunt topildi! Ushbu hisob siznikimi?</b>\n\n👤 <b>Ism:</b> ${name}\n📧 <b>Email:</b> <code>${email}</code>\n⭐️ <b>Hozirgi status:</b> ${
-        isPro ? '✅ PRO Faol' : 'Standart (Tekin)'
-      }\n\nAgar ma'lumotlar to'g'ri bo'lsa, quyidagi tugmani bosing:`,
+      `⚠️ <b>Siz avval solargrid.uz saytida ro'yxatdan o'tmagansiz.</b>\n\nKiritilgan "<code>${term}</code>" bo'yicha akkaunt topilmadi.\n\nIltimos, avval saytdan akkaunt oching va qayta urinib ko'ring:\n👉 <a href="https://solargrid.uz">https://solargrid.uz</a>\n\nAkkaunt ochgach, emailingizni shu yerga yozing.`,
+    confirmAccount: (name, email, isPro, expiresText, priceStr, isFirstTime) =>
+      `🔍 <b>Akkaunt topildi! Shu sizning akkauntingizmi?</b>\n\n` +
+      `👤 <b>Ism:</b> ${name}\n` +
+      `📧 <b>Email:</b> <code>${email}</code>\n` +
+      `⭐️ <b>Holat:</b> ${isPro ? `✅ PRO Faol (${expiresText} gacha)` : 'Standart (Tekin)'}\n\n` +
+      `💰 <b>Tarif narxi:</b> <b>${priceStr}</b> (30 kunlik kirish)\n` +
+      `📌 <i>${isFirstTime ? "🔥 Start aksiya: Birinchi oy uchun maxsus narx!" : "🔄 Standart narx: Obunani 30 kunga uzaytirish."}</i>\n\n` +
+      `Agar ma'lumotlar to'g'ri bo'lsa, davom etish tugmasini bosing:`,
     btnConfirm: `✅ Ha, bu mening akkauntim`,
-    btnChangeAccount: `🔄 Boshqa email kiritish`,
-    paymentInfo: `💳 <b>SolarGrid PRO — To'lov ma'lumotlari</b>\n\n` +
-      `⭐️ <b>PRO imkoniyatlar:</b> Cheksiz loyihalar, AI Avto-terish, PDF smeta va montaj chizmasi eksporti.\n\n` +
-      `💰 <b>Summa:</b> <code>${PAYMENT_AMOUNT}</code> (1 oylik obuna)\n` +
+    btnChangeAccount: `🔄 Boshqa akkaunt kiritish`,
+    paymentInfo: (priceStr, isFirstTime) =>
+      `💳 <b>SolarGrid PRO — To'lov Ma'lumotlari</b>\n\n` +
+      `⭐️ <b>Obuna turi:</b> ${isFirstTime ? "🔥 1-oy (Start narx - 30 kun)" : "🔄 Keyingi oy (Uzaytirish - 30 kun)"}\n` +
+      `💰 <b>To'lov summasi:</b> <code>${priceStr}</code>\n` +
       `💳 <b>Karta raqami:</b> <code>${PAYMENT_CARD}</code>\n` +
       `👤 <b>Karta egasi:</b> <b>${PAYMENT_CARD_HOLDER}</b>\n\n` +
       `📌 <b>Ko'rsatma:</b>\n` +
-      `1. Yuqoridagi Uzcard kartasiga <b>${PAYMENT_AMOUNT}</b> o'tkazing.\n` +
-      `2. To'lov amalga oshirilganligi haqidagi <b>chekni (skrinshot yoki rasmini)</b> ushbu botga rasm holatida yuboring.\n\n` +
-      `Chek kelishi bilanoq adminlarimiz tekshirib, profilingizni PRO ga o'tkazadilar! 🚀`,
-    receiptReceived: `✅ <b>To'lov cheki qabul qilindi!</b>\n\nChekingiz tekshirish uchun ma'muriyatga (admin) yuborildi. Bir necha daqiqada to'lov tasdiqlanib, saytda PRO status yoqiladi.\n\nBiz bilan ekanligingizdan mamnunmiz! ☀️`,
-    proApprovedUser: `🎉 <b>TABRIKLAYMIZ! PRO VERSIYA FAOLLASHTIRILDI!</b>\n\nSizning to'lovingiz muvaffaqiyatli tasdiqlandi. SolarGrid akkauntingizda barcha PRO imkoniyatlar (AI terish, cheksiz papkalar, PDF smeta) ochildi.\n\n👉 <a href="https://solargrid.uz">solargrid.uz</a> saytiga kirib yangi imkoniyatlardan foydalanishingiz mumkin!`,
-    proRejectedUser: `❌ <b>To'lov tasdiqlanmadi</b>\n\nAfsuski, yuborgan chekingiz tasdiqlanmadi. Iltimos to'lov ma'lumotlarini tekshirib, qayta to'lov chekini yuboring yoki admin bilan bog'laning.`,
+      `1. Yuqoridagi Uzcard kartasiga aniq <b>${priceStr}</b> o'tkazing.\n` +
+      `2. To'lov amalga oshirilganligi haqidagi <b>chekni (skrinshot yoki fotosurat)</b> ushbu botga rasm holatida yuboring.\n\n` +
+      `Chek kelishi bilanoq administrator tekshirib, hisobingizga 30 kunlik PRO obunani yoqib beradi! 🚀`,
+    receiptReceived: `✅ <b>To'lov cheki qabul qilindi!</b>\n\nChekingiz ma'muriyatga (@A_Husanboyev) tekshirish uchun yuborildi. Bir necha daqiqada to'lov tasdiqlanib, hisobingiz PRO statusiga o'tkaziladi.`,
+    proApprovedUser: (expiresFormatted) =>
+      `🎉 <b>TABRIKLAYMIZ! PRO TARIFINGIZ FAOLLASHTIRILDI!</b>\n\n` +
+      `Sizning to'lovingiz muvaffaqiyatli tasdiqlandi.\n` +
+      `📅 <b>Amal qilish muddati:</b> ${expiresFormatted} gacha (30 kun).\n\n` +
+      `Endi <a href="https://solargrid.uz">solargrid.uz</a> saytiga kirib, AI avto-terish, cheksiz papkalar va montaj smetasidan to'liq foydalanishingiz mumkin! ☀️`,
+    proRejectedUser: `❌ <b>To'lov tasdiqlanmadi</b>\n\nAfsuski, yuborgan chekingiz tasdiqlanmadi. Iltimos to'lov ma'lumotlarini tekshirib qayta yuboring yoki administrator @A_Husanboyev bilan bog'laning.`,
   },
   ru: {
-    welcome: `☀️ <b>Добро пожаловать в официальный бот SolarGrid!</b>\n\nПожалуйста, выберите удобный язык:`,
-    langSelected: `🇷🇺 <b>Выбран русский язык.</b>\n\nДля активации SolarGrid PRO укажите ваш аккаунт (email или ID) на сайте:`,
-    enterEmail: `✍️ Пожалуйста, отправьте <b>Email</b>, с которым вы зарегистрированы на сайте <b>solargrid.uz</b>:`,
+    welcome: `☀️ <b>Добро пожаловать в официальный бот SolarGrid!</b>\n\nПожалуйста, выберите язык:\nPlease select a language:`,
+    langSelected: `🇷🇺 <b>Выбран русский язык.</b>`,
+    enterEmail: `✍️ Пожалуйста, отправьте <b>Email</b> или <b>User ID</b>, с которым вы зарегистрированы на <b>solargrid.uz</b>:`,
     notFound: (term) =>
-      `⚠️ <b>Аккаунт не найден!</b>\n\nПользователь с адресом "<code>${term}</code>" не найден.\n\nПожалуйста, сначала зарегистрируйтесь на сайте <a href="https://solargrid.uz">solargrid.uz</a> или проверьте правильность ввода Email.`,
-    confirmAccount: (name, email, isPro) =>
-      `🔍 <b>Аккаунт найден! Это ваш профиль?</b>\n\n👤 <b>Имя:</b> ${name}\n📧 <b>Email:</b> <code>${email}</code>\n⭐️ <b>Текущий статус:</b> ${
-        isPro ? '✅ PRO Активен' : 'Стандартный (Бесплатный)'
-      }\n\nЕсли всё верно, нажмите кнопку ниже:`,
+      `⚠️ <b>Вы еще не зарегистрированы на сайте solargrid.uz.</b>\n\nАккаунт по запросу "<code>${term}</code>" не найден.\n\nПожалуйста, сначала создайте аккаунт на сайте:\n👉 <a href="https://solargrid.uz">https://solargrid.uz</a>\n\nПосле регистрации отправьте ваш Email сюда.`,
+    confirmAccount: (name, email, isPro, expiresText, priceStr, isFirstTime) =>
+      `🔍 <b>Аккаунт найден! Это ваш профиль?</b>\n\n` +
+      `👤 <b>Имя:</b> ${name}\n` +
+      `📧 <b>Email:</b> <code>${email}</code>\n` +
+      `⭐️ <b>Статус:</b> ${isPro ? `✅ PRO Активен (до ${expiresText})` : 'Стандартный (Бесплатный)'}\n\n` +
+      `💰 <b>Стоимость тарифа:</b> <b>${priceStr}</b> (30 дней)\n` +
+      `📌 <i>${isFirstTime ? "🔥 Старт акция: Спеццена на первый месяц!" : "🔄 Стандартная цена: Продление на 30 дней."}</i>\n\n` +
+      `Если данные верны, нажмите кнопку подтверждения:`,
     btnConfirm: `✅ Да, это мой аккаунт`,
-    btnChangeAccount: `🔄 Ввести другой Email`,
-    paymentInfo: `💳 <b>SolarGrid PRO — Реквизиты для оплаты</b>\n\n` +
-      `⭐️ <b>Преимущества PRO:</b> Неограниченные проекты, AI Авто-раскладка, экспорт подробных смет и чертежей PDF.\n\n` +
-      `💰 <b>Сумма:</b> <code>${PAYMENT_AMOUNT}</code> (подписка на 1 месяц)\n` +
+    btnChangeAccount: `🔄 Ввести другой аккаунт`,
+    paymentInfo: (priceStr, isFirstTime) =>
+      `💳 <b>SolarGrid PRO — Реквизиты для оплаты</b>\n\n` +
+      `⭐️ <b>Тип подписки:</b> ${isFirstTime ? "🔥 1-й месяц (Старт акция - 30 дней)" : "🔄 Следующий месяц (Продление - 30 дней)"}\n` +
+      `💰 <b>Сумма к оплате:</b> <code>${priceStr}</code>\n` +
       `💳 <b>Номер карты:</b> <code>${PAYMENT_CARD}</code>\n` +
       `👤 <b>Получатель:</b> <b>${PAYMENT_CARD_HOLDER}</b>\n\n` +
       `📌 <b>Инструкция:</b>\n` +
-      `1. Переведите <b>${PAYMENT_AMOUNT}</b> на указанную карту Uzcard.\n` +
-      `2. Отправьте <b>чек об оплате (скриншот или фото)</b> в этот чат.\n\n` +
-      `После отправки чека администратор подтвердит оплату и активирует PRO! 🚀`,
-    receiptReceived: `✅ <b>Чек об оплате принят!</b>\n\nЧек передан администратору на проверку. В течение нескольких минут ваш аккаунт будет переведен в статус PRO.\n\nСпасибо, что выбрали нас! ☀️`,
-    proApprovedUser: `🎉 <b>ПОЗДРАВЛЯЕМ! ВАШ PRO СТАТУС АКТИВИРОВАН!</b>\n\nОплата успешно подтверждена. Все возможности PRO теперь доступны в вашем профиле SolarGrid.\n\n👉 Перейдите на <a href="https://solargrid.uz">solargrid.uz</a> и проектируйте без ограничений!`,
-    proRejectedUser: `❌ <b>Оплата не подтверждена</b>\n\nК сожалению, чек не прошел проверку. Пожалуйста, проверьте реквизиты и отправьте корректный чек.`,
+      `1. Переведите <b>${priceStr}</b> на карту Uzcard.\n` +
+      `2. Отправьте <b>чек об оплате (скриншот или фото)</b> в этот бот.\n\n` +
+      `После проверки администратором PRO подписка будет активирована на 30 дней! 🚀`,
+    receiptReceived: `✅ <b>Чек об оплате принят!</b>\n\nЧек передан администратору (@A_Husanboyev) на проверку. В течение нескольких минут ваш тариф будет активирован.`,
+    proApprovedUser: (expiresFormatted) =>
+      `🎉 <b>ПОЗДРАВЛЯЕМ! ВАШ PRO ТАРИФ АКТИВИРОВАН!</b>\n\n` +
+      `Оплата успешно подтверждена.\n` +
+      `📅 <b>Срок действия:</b> до ${expiresFormatted} (30 дней).\n\n` +
+      `Перейдите на <a href="https://solargrid.uz">solargrid.uz</a> и пользуйтесь всеми возможностями PRO без ограничений! ☀️`,
+    proRejectedUser: `❌ <b>Оплата не подтверждена</b>\n\nК сожалению, чек не прошел проверку. Пожалуйста, проверьте реквизиты и отправьте корректный чек или свяжитесь с @A_Husanboyev.`,
   },
   en: {
     welcome: `☀️ <b>Welcome to SolarGrid Official Bot!</b>\n\nPlease select your preferred language:`,
-    langSelected: `🇬🇧 <b>English selected.</b>\n\nTo activate SolarGrid PRO, enter your account email or ID registered on our website:`,
-    enterEmail: `✍️ Please send your <b>registered Email</b> on <b>solargrid.uz</b>:`,
+    langSelected: `🇬🇧 <b>English selected.</b>`,
+    enterEmail: `✍️ Please send your registered <b>Email</b> or <b>User ID</b> on <b>solargrid.uz</b>:`,
     notFound: (term) =>
-      `⚠️ <b>Account not found!</b>\n\nNo user found with "<code>${term}</code>".\n\nPlease register first at <a href="https://solargrid.uz">solargrid.uz</a> and try again.`,
-    confirmAccount: (name, email, isPro) =>
-      `🔍 <b>Account found! Is this your profile?</b>\n\n👤 <b>Name:</b> ${name}\n📧 <b>Email:</b> <code>${email}</code>\n⭐️ <b>Status:</b> ${
-        isPro ? '✅ PRO Active' : 'Standard'
-      }\n\nIf correct, tap the button below:`,
+      `⚠️ <b>You are not registered on solargrid.uz yet.</b>\n\nNo account found for "<code>${term}</code>".\n\nPlease register on our website first:\n👉 <a href="https://solargrid.uz">https://solargrid.uz</a>\n\nThen send your registered Email here.`,
+    confirmAccount: (name, email, isPro, expiresText, priceStr, isFirstTime) =>
+      `🔍 <b>Account found! Is this your profile?</b>\n\n` +
+      `👤 <b>Name:</b> ${name}\n` +
+      `📧 <b>Email:</b> <code>${email}</code>\n` +
+      `⭐️ <b>Status:</b> ${isPro ? `✅ PRO Active (until ${expiresText})` : 'Standard'}\n\n` +
+      `💰 <b>Tariff price:</b> <b>${priceStr}</b> (30 days)\n` +
+      `📌 <i>${isFirstTime ? "🔥 Starter Promo: Special price for the 1st month!" : "🔄 Standard renewal: 30 days extension."}</i>\n\n` +
+      `If correct, tap confirm below:`,
     btnConfirm: `✅ Yes, this is my account`,
-    btnChangeAccount: `🔄 Enter another Email`,
-    paymentInfo: `💳 <b>SolarGrid PRO — Payment Details</b>\n\n` +
-      `⭐️ <b>PRO Features:</b> Unlimited projects, AI auto-layout, PDF estimates and drawings.\n\n` +
-      `💰 <b>Amount:</b> <code>${PAYMENT_AMOUNT}</code> (1 month)\n` +
-      `💳 <b>Card:</b> <code>${PAYMENT_CARD}</code>\n` +
+    btnChangeAccount: `🔄 Enter another account`,
+    paymentInfo: (priceStr, isFirstTime) =>
+      `💳 <b>SolarGrid PRO — Payment Details</b>\n\n` +
+      `⭐️ <b>Plan type:</b> ${isFirstTime ? "🔥 1st Month (Starter Promo - 30 days)" : "🔄 Next Month (Renewal - 30 days)"}\n` +
+      `💰 <b>Amount:</b> <code>${priceStr}</code>\n` +
+      `💳 <b>Card number:</b> <code>${PAYMENT_CARD}</code>\n` +
       `👤 <b>Cardholder:</b> <b>${PAYMENT_CARD_HOLDER}</b>\n\n` +
       `📌 <b>Instructions:</b>\n` +
-      `1. Transfer <b>${PAYMENT_AMOUNT}</b> to the Uzcard above.\n` +
+      `1. Transfer <b>${priceStr}</b> to the Uzcard above.\n` +
       `2. Send the <b>payment receipt (screenshot or photo)</b> to this bot.\n\n` +
-      `Our admin will review and activate your PRO status in minutes! 🚀`,
-    receiptReceived: `✅ <b>Receipt received!</b>\n\nYour receipt was forwarded to our administrator for verification. Your PRO status will be activated shortly.`,
-    proApprovedUser: `🎉 <b>CONGRATULATIONS! PRO ACTIVATED!</b>\n\nYour payment has been verified. All PRO features on SolarGrid are now unlocked for you.\n\n👉 Visit <a href="https://solargrid.uz">solargrid.uz</a> now!`,
-    proRejectedUser: `❌ <b>Payment not approved</b>\n\nUnfortunately your receipt could not be verified. Please check and send a valid receipt.`,
+      `Our admin will verify and activate your 30-day PRO plan shortly! 🚀`,
+    receiptReceived: `✅ <b>Receipt received!</b>\n\nYour receipt has been forwarded to our administrator (@A_Husanboyev) for verification. Your PRO status will be activated in minutes.`,
+    proApprovedUser: (expiresFormatted) =>
+      `🎉 <b>CONGRATULATIONS! YOUR PRO PLAN IS ACTIVATED!</b>\n\n` +
+      `Your payment has been verified.\n` +
+      `📅 <b>Valid until:</b> ${expiresFormatted} (30 days).\n\n` +
+      `Visit <a href="https://solargrid.uz">solargrid.uz</a> and enjoy full PRO features! ☀️`,
+    proRejectedUser: `❌ <b>Payment not approved</b>\n\nUnfortunately your receipt could not be verified. Please check and submit a valid receipt or contact @A_Husanboyev.`,
   },
 };
 
@@ -262,15 +359,26 @@ async function sendLanguageSelection(chatId) {
 
 async function showAccountConfirmation(chatId, account, lang = 'uz') {
   const t = TEXTS[lang] || TEXTS.uz;
+  const priceStr = formatUzs(account.calculatedPrice);
+  const expiresText = account.expiresAt ? formatDate(account.expiresAt) : 'Faol emas';
+
   const keyboard = {
     inline_keyboard: [
       [{ text: t.btnConfirm, callback_data: 'confirm_account' }],
       [{ text: t.btnChangeAccount, callback_data: 'change_account' }],
     ],
   };
+
   await sendMessage(
     chatId,
-    t.confirmAccount(account.fullName || 'Foydalanuvchi', account.email, account.isPro),
+    t.confirmAccount(
+      account.fullName || 'Foydalanuvchi',
+      account.email,
+      account.isPro,
+      expiresText,
+      priceStr,
+      account.isFirstTime
+    ),
     keyboard
   );
 }
@@ -278,7 +386,7 @@ async function showAccountConfirmation(chatId, account, lang = 'uz') {
 // Bitta update ni qayta ishlash
 async function processUpdate(update) {
   try {
-    // 1. Callback query
+    // 1. Callback query (Tugma bosilganda)
     if (update.callback_query) {
       const cq = update.callback_query;
       const chatId = cq.message.chat.id;
@@ -305,10 +413,15 @@ async function processUpdate(update) {
       if (data === 'confirm_account') {
         const t = TEXTS[session.lang] || TEXTS.uz;
         updateSession(chatId, { step: 'WAITING_RECEIPT' });
+
+        const account = session.accountData;
+        const priceStr = account ? formatUzs(account.calculatedPrice) : formatUzs(PRICE_FIRST_MONTH);
+        const isFirst = account ? account.isFirstTime : true;
+
         const keyboard = {
           inline_keyboard: [[{ text: t.btnChangeAccount, callback_data: 'change_account' }]],
         };
-        await sendMessage(chatId, t.paymentInfo, keyboard);
+        await sendMessage(chatId, t.paymentInfo(priceStr, isFirst), keyboard);
         return;
       }
 
@@ -320,22 +433,27 @@ async function processUpdate(update) {
         return;
       }
 
-      // ADMIN: PRO faollashtirish
+      // ADMIN: PRO faollashtirish (approve_pro_{userId}_{amount})
       if (data.startsWith('approve_pro_')) {
-        const targetUserId = data.replace('approve_pro_', '');
-        const success = await setProStatusInSupabase(targetUserId, true);
+        const parts = data.replace('approve_pro_', '').split('_');
+        const targetUserId = parts[0];
+        const amountPaid = parts.length > 1 ? Number(parts[1]) : PRICE_FIRST_MONTH;
 
-        if (success) {
+        const res = await setProStatusInSupabase(targetUserId, true, amountPaid);
+
+        if (res.success && res.expiresAt) {
+          const expiresFormatted = formatDate(res.expiresAt);
+
           await editMessageText(
             chatId,
             cq.message.message_id,
-            `${cq.message.text || cq.message.caption || ''}\n\n✅ <b>ADMIN TASDIQLADI: PRO FAOLLASHTIRILDI!</b>`
+            `${cq.message.text || cq.message.caption || ''}\n\n✅ <b>ADMIN TASDIQLADI: PRO 30 KUNGA FAOLLASHTIRILDI!</b>\n📅 <b>Amal qilish muddati:</b> ${expiresFormatted} gacha`
           );
 
           for (const [uChatId, s] of sessions.entries()) {
             if (s.accountData?.id === targetUserId) {
               const t = TEXTS[s.lang] || TEXTS.uz;
-              await sendMessage(uChatId, t.proApprovedUser);
+              await sendMessage(uChatId, t.proApprovedUser(expiresFormatted));
             }
           }
         }
@@ -371,6 +489,7 @@ async function processUpdate(update) {
       const lang = session.lang || 'uz';
       const t = TEXTS[lang] || TEXTS.uz;
 
+      // /start komandasi
       if (text.startsWith('/start')) {
         const parts = text.split(' ');
         const startParam = parts.length > 1 ? parts[1].trim() : '';
@@ -378,7 +497,7 @@ async function processUpdate(update) {
         if (startParam) {
           let decodedParam = startParam;
           try {
-            if (!startParam.includes('@')) {
+            if (!startParam.includes('@') && !startParam.includes('-')) {
               decodedParam = Buffer.from(startParam, 'base64').toString('utf-8');
             }
           } catch (e) {}
@@ -416,14 +535,22 @@ async function processUpdate(update) {
 
         await sendMessage(chatId, t.receiptReceived);
 
+        const priceAmount = currentAccount?.calculatedPrice || PRICE_FIRST_MONTH;
+        const priceStr = formatUzs(priceAmount);
+        const tariffLabel = currentAccount?.isFirstTime
+          ? "🔥 1-Oylik Boshlang'ich Tarif (Start narx - 30 kun)"
+          : "🔄 Keyingi Oy (Obunani uzaytirish - 30 kun)";
+
         const adminCaption =
           `🔔 <b>YANGI TO'LOV CHEKI KELDI!</b>\n\n` +
           `👤 <b>Telegram:</b> ${senderName} (${senderUsername})\n` +
-          `🆔 <b>Telegram Chat ID:</b> <code>${chatId}</code>\n` +
-          `📧 <b>SolarGrid Email:</b> <code>${currentAccount?.email || "Ko'rsatilmagan"}</code>\n` +
-          `👤 <b>SolarGrid Ism:</b> ${currentAccount?.fullName || "Ko'rsatilmagan"}\n` +
-          `🆔 <b>SolarGrid ID:</b> <code>${currentAccount?.id || 'Noma\'lum'}</code>\n` +
-          `💰 <b>Summa:</b> ${PAYMENT_AMOUNT}\n` +
+          `🆔 <b>Telegram Chat ID:</b> <code>${chatId}</code>\n\n` +
+          `🌐 <b>SolarGrid Akkaunt:</b>\n` +
+          `👤 <b>Ism:</b> ${currentAccount?.fullName || "Ko'rsatilmagan"}\n` +
+          `📧 <b>Email:</b> <code>${currentAccount?.email || "Ko'rsatilmagan"}</code>\n` +
+          `🆔 <b>User ID:</b> <code>${currentAccount?.id || "Noma'lum"}</code>\n\n` +
+          `💰 <b>Hisoblangan summa:</b> <b>${priceStr}</b>\n` +
+          `📊 <b>Tarif turi:</b> ${tariffLabel}\n` +
           `💳 <b>Karta:</b> ${PAYMENT_CARD} (${PAYMENT_CARD_HOLDER})\n\n` +
           `Iltimos, to'lovni tekshirib tasdiqlang:`;
 
@@ -432,7 +559,7 @@ async function processUpdate(update) {
             [
               {
                 text: '✅ Tasdiqlash (PRO faollashtirish)',
-                callback_data: `approve_pro_${currentAccount?.id || 'unknown'}`,
+                callback_data: `approve_pro_${currentAccount?.id || 'unknown'}_${priceAmount}`,
               },
               {
                 text: '❌ Rad etish',

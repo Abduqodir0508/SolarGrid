@@ -24,6 +24,8 @@ import {
 import {
   supabase,
   getUserProStatus,
+  getUserProDetails,
+  ProDetails,
   syncProjectsToCloud,
   fetchProjectsFromCloud,
   getStoredUserSession,
@@ -33,6 +35,7 @@ import {
 import { calculateProjectMetrics } from '@/utils/solarCalc';
 import { sanitizeText } from '@/utils/sanitize';
 import { calculateNextPanelPlacement, validatePanelPlacement } from '@/utils/geometry';
+import { AlertTriangle } from 'lucide-react';
 
 import { Header } from '@/components/Header';
 import { Canvas2D } from '@/components/Canvas2D';
@@ -50,10 +53,32 @@ export default function SolarGridApp() {
   // 1. Supabase Auth va PRO holatlari (Sessiyani F5 / Refresh da zudlik bilan tiklash)
   const [currentUser, setCurrentUser] = useState<any>(() => getStoredUserSession());
   const [isPro, setIsPro] = useState<boolean>(false);
+  const [proDetails, setProDetails] = useState<ProDetails | null>(null);
+  const [proAlertBanner, setProAlertBanner] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalNotice, setAuthModalNotice] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
+
+  // PRO statusini va muddatini tekshirish
+  const refreshPro = useCallback(async (uid?: string) => {
+    if (!uid) {
+      setIsPro(false);
+      setProDetails(null);
+      setProAlertBanner(null);
+      return;
+    }
+    const details = await getUserProDetails(uid);
+    setIsPro(details.isPro);
+    setProDetails(details);
+    if (details.isExpired) {
+      setProAlertBanner("⚠️ Sizning PRO obuna muddatingiz tugadi. Standart rejimga o'tildi.");
+    } else if (details.isExpiringSoon) {
+      setProAlertBanner(`⚠️ Diqqat: PRO obunangiz tugashiga ${details.daysRemaining} kun qoldi!`);
+    } else {
+      setProAlertBanner(null);
+    }
+  }, []);
 
   // 2. Ko'p loyihali tizim holatlari
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -89,7 +114,7 @@ export default function SolarGridApp() {
     const cachedUser = getStoredUserSession();
     if (cachedUser?.id) {
       setCurrentUser(cachedUser);
-      getUserProStatus(cachedUser.id).then(setIsPro);
+      refreshPro(cachedUser.id);
     }
 
     // B) Supabase server sessiyasini sinxronlash
@@ -99,7 +124,7 @@ export default function SolarGridApp() {
       saveStoredUserSession(user);
 
       if (user) {
-        getUserProStatus(user.id).then(setIsPro);
+        refreshPro(user.id);
         // Bulutdan loyihalarni sinxronlash
         fetchProjectsFromCloud(user.id).then((cloudProjects) => {
           if (cloudProjects && cloudProjects.length > 0) {
@@ -109,7 +134,7 @@ export default function SolarGridApp() {
           }
         });
       } else {
-        setIsPro(false);
+        refreshPro();
       }
     });
 
@@ -121,14 +146,14 @@ export default function SolarGridApp() {
       saveStoredUserSession(user);
 
       if (user) {
-        getUserProStatus(user.id).then(setIsPro);
+        refreshPro(user.id);
       } else {
-        setIsPro(false);
+        refreshPro();
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [refreshPro]);
 
   // 5. Dastlabki yuklanish (URL Hash yoki LocalStorage)
   useEffect(() => {
@@ -391,6 +416,7 @@ export default function SolarGridApp() {
       return;
     }
     setAuthModalNotice(null);
+    refreshPro(currentUser.id);
     setIsPricingModalOpen(true);
   };
 
@@ -410,7 +436,7 @@ export default function SolarGridApp() {
     await supabase.auth.signOut();
     clearStoredUserSession();
     setCurrentUser(null);
-    setIsPro(false);
+    refreshPro();
     setIsProfileModalOpen(false);
     setIsAuthModalOpen(false);
   };
@@ -420,7 +446,7 @@ export default function SolarGridApp() {
     setCurrentUser(updatedUser);
     saveStoredUserSession(updatedUser);
     if (updatedUser?.id) {
-      getUserProStatus(updatedUser.id).then(setIsPro);
+      refreshPro(updatedUser.id);
     }
   };
 
@@ -464,6 +490,23 @@ export default function SolarGridApp() {
         isPro={isPro}
         currentUser={currentUser}
       />
+
+      {/* PRO Muddat Tugashi / Tugash Arafasi Bildirishnomasi */}
+      {proAlertBanner && (
+        <div className="bg-amber-500/15 dark:bg-amber-950/60 border-b border-amber-300 dark:border-amber-700/60 px-4 py-2 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 z-30">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-semibold">{proAlertBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenPricing}
+            className="font-bold underline text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-white text-xs ml-3 whitespace-nowrap"
+          >
+            Bot orqali yangilash →
+          </button>
+        </div>
+      )}
 
       {/* 2. Asosiy Chizma / Simulyatsiya Maydoni */}
       <main className="flex-1 relative w-full h-[calc(100vh-61px)] overflow-hidden">
@@ -521,7 +564,10 @@ export default function SolarGridApp() {
         isOpen={isPricingModalOpen}
         onClose={() => setIsPricingModalOpen(false)}
         isPro={isPro}
-        onProActivated={() => setIsPro(true)}
+        proDetails={proDetails}
+        onProActivated={() => {
+          if (currentUser?.id) refreshPro(currentUser.id);
+        }}
         userId={currentUser?.id}
         currentUser={currentUser}
         onOpenAuth={() => {
@@ -542,9 +588,9 @@ export default function SolarGridApp() {
           setCurrentUser(user);
           saveStoredUserSession(user);
           if (user) {
-            getUserProStatus(user.id).then(setIsPro);
+            refreshPro(user.id);
           } else {
-            setIsPro(false);
+            refreshPro();
           }
         }}
         onOpenPricing={handleOpenPricing}

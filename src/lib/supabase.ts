@@ -131,34 +131,109 @@ export async function updateUserProfile(data: {
   }
 }
 
-/**
- * Foydalanuvchi PRO statusini tekshirish
- * Faqat tizimga kirgan aniq foydalanuvchi ID si bo'yicha ishlaydi.
- * Mehmonlar uchun qat'iy FALSE bo'ladi!
- */
-export async function getUserProStatus(userId?: string): Promise<boolean> {
-  if (typeof window === 'undefined' || !userId) return false;
+export interface ProDetails {
+  isPro: boolean;
+  expiresAt: string | null;
+  daysRemaining: number;
+  isExpiringSoon: boolean;
+  isExpired: boolean;
+  monthsCount: number;
+}
 
-  const userProKey = `solargrid_pro_user_${userId}`;
-  const localPro = localStorage.getItem(userProKey) === 'true';
+/**
+ * Foydalanuvchi PRO statusi va muddatini to'liq tekshirish
+ * Muddat o'tgan bo'lsa avtomatik is_pro = false qilinadi!
+ */
+export async function getUserProDetails(userId?: string): Promise<ProDetails> {
+  const defaultRes: ProDetails = {
+    isPro: false,
+    expiresAt: null,
+    daysRemaining: 0,
+    isExpiringSoon: false,
+    isExpired: false,
+    monthsCount: 0,
+  };
+
+  if (typeof window === 'undefined' || !userId) return defaultRes;
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user && user.id === userId) {
-      const isPro = !!user.user_metadata?.is_pro;
-      if (isPro) {
-        localStorage.setItem(userProKey, 'true');
-        return true;
-      }
-      if (!isPro && !localPro) {
-        return false;
-      }
-    }
-  } catch (err) {
-    console.warn('Pro statusini olishda ogohlantirish:', err);
-  }
+    if (!user || user.id !== userId) return defaultRes;
 
-  return localPro;
+    const metadata = user.user_metadata || {};
+    const rawIsPro = !!metadata.is_pro;
+    const expiresAtStr = metadata.pro_expires_at || null;
+    const monthsCount = Number(metadata.pro_months_count || 0);
+
+    if (!rawIsPro) {
+      localStorage.setItem(`solargrid_pro_user_${userId}`, 'false');
+      return { ...defaultRes, monthsCount };
+    }
+
+    if (expiresAtStr) {
+      const now = new Date();
+      const expiresDate = new Date(expiresAtStr);
+
+      // Agar muddati tugagan bo'lsa
+      if (now > expiresDate) {
+        localStorage.setItem(`solargrid_pro_user_${userId}`, 'false');
+        // Supabase da is_pro ni false ga tushirish
+        supabase.auth.updateUser({
+          data: { is_pro: false },
+        }).catch(() => {});
+
+        return {
+          isPro: false,
+          expiresAt: expiresAtStr,
+          daysRemaining: 0,
+          isExpiringSoon: false,
+          isExpired: true,
+          monthsCount,
+        };
+      }
+
+      // Hali muddati bor
+      const diffMs = expiresDate.getTime() - now.getTime();
+      const daysRemaining = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+      const isExpiringSoon = daysRemaining <= 3;
+
+      localStorage.setItem(`solargrid_pro_user_${userId}`, 'true');
+
+      return {
+        isPro: true,
+        expiresAt: expiresAtStr,
+        daysRemaining,
+        isExpiringSoon,
+        isExpired: false,
+        monthsCount,
+      };
+    }
+
+    // Agar expiresAt ko'rsatilmagan bo'lsa, lekin is_pro true bo'lsa
+    localStorage.setItem(`solargrid_pro_user_${userId}`, 'true');
+    return {
+      isPro: true,
+      expiresAt: null,
+      daysRemaining: 30,
+      isExpiringSoon: false,
+      isExpired: false,
+      monthsCount,
+    };
+  } catch (err) {
+    console.warn('Pro tafsilotlarini olishda ogohlantirish:', err);
+    return defaultRes;
+  }
+}
+
+/**
+ * Foydalanuvchi PRO statusini tekshirish
+ * Faqat tizimga kirgan aniq foydalanuvchi ID si bo'yicha ishlaydi.
+ * Muddat o'tgan bo'lsa qat'iy false qaytaradi!
+ */
+export async function getUserProStatus(userId?: string): Promise<boolean> {
+  if (typeof window === 'undefined' || !userId) return false;
+  const details = await getUserProDetails(userId);
+  return details.isPro;
 }
 
 /**

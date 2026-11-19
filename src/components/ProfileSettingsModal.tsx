@@ -282,9 +282,16 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               <span className="text-[10px] text-gray-500 dark:text-gray-400 block uppercase font-bold tracking-wider">
                 Tarif holati:
               </span>
-              <span className="text-xs font-black text-navy-950 dark:text-white flex items-center gap-1">
+              <span className="text-xs font-black text-navy-950 dark:text-white flex flex-col">
                 {isPro ? (
-                  <strong className="text-amber-600 dark:text-amber-400">PRO Versiya (Cheksiz)</strong>
+                  <>
+                    <strong className="text-amber-600 dark:text-amber-400">PRO Versiya (Cheksiz)</strong>
+                    {currentUser?.user_metadata?.pro_expires_at && (
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">
+                        Muddat: {new Date(currentUser.user_metadata.pro_expires_at).toLocaleDateString('uz-UZ')} gacha
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <span>Standart (3 ta loyiha)</span>
                 )}
